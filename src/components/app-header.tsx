@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 const links = [
   { href: "/", label: "New Entry" },
   { href: "/history", label: "History" },
+  { href: "/dashboard", label: "Dashboard" },
 ];
 
 export function AppHeader() {
@@ -28,7 +29,7 @@ export function AppHeader() {
                 key={l.href}
                 href={l.href}
                 className={cn(
-                  "rounded-lg px-3 py-1 text-sm font-medium transition-all",
+                  "rounded-lg px-2.5 py-1 text-sm font-medium transition-all sm:px-3",
                   pathname === l.href
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"

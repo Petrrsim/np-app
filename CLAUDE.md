@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Status:** Rebuilt from scratch on 2026-06-03 (Next.js). The previous Vite SPA was deleted; the
 > Supabase backend (data + edge functions) was preserved and is documented in
-> [SUPABASE.md](SUPABASE.md). Single-user personal diary — two screens (New Entry, History) + login.
+> [SUPABASE.md](SUPABASE.md). Single-user personal diary — three screens (New Entry, History, Dashboard) + login.
 
 ## Skills
 
@@ -49,7 +49,7 @@ src/
                                                from media/np_logo.png (file-convention icons, no <link> code)
     login/page.tsx                             bare login screen (signInWithPassword)
     (protected)/                               route group behind <AuthGate> + <AppHeader>
-      layout.tsx · page.tsx (New Entry, "/") · history/page.tsx
+      layout.tsx · page.tsx (New Entry, "/") · history/page.tsx · dashboard/page.tsx
   components/
     ui/             shadcn-style primitives (button, card, input, textarea, slider, dialog,
                     alert-dialog, popover, sonner)
@@ -57,11 +57,14 @@ src/
                     metric-slider, success-buttons, level-tiles, sleep-picker,
                     activity-picker, people-picker, marker-picker, entry-card,
                     edit-entry-dialog, delete-entry-button, date-picker
+    dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
+                    stat-tiles (Mood/Energy/Flow tiles) · insights (weekday / success / tag / sleep cards)
   contexts/         auth-context.tsx (useAuth)
   hooks/            use-entries.ts (list/create/update/delete incl. activities, people, markers,
                     latest metrics, sleep-logged-on; usePeople/useMarkers lists + create)
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
-                    activities.ts (activity list), search.ts (History note search + highlight)
+                    activities.ts (activity list), search.ts (History note search + highlight),
+                    stats.ts (pure Dashboard computations)
   types/            db.ts (shared domain types / DB contract)
 media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx; source for the icons)
 .env              Supabase connection (gitignored)        .env.example  template
@@ -98,6 +101,26 @@ History performance (~5k logs): the page folds all notes once on first search (n
 keystroke) and renders cards in chunks of 40 as you scroll (`EntryList` in the history page) —
 never mount the whole list at once. The full history is prefetched after login
 (`usePrefetchEntries` in `AuthGate`) and cached for 5 min (`entriesQuery`).
+
+Dashboard (`/dashboard`): everything is computed client-side from the cached `useEntries` history
+by pure functions in [src/lib/stats.ts](src/lib/stats.ts) (no extra queries). A range picker
+(7D / 30D / 90D / 1Y / All, default 7D) scopes all of it. Top to bottom: Mood / Energy / Flow
+average tiles (delta vs. the previous period of the same length + sparkline) → the chart card
+(toggles: Mood / Energy / Flow lines, Success markers, per-metric moving-average "Trend" lines with a
+7/30/90d window, zoom) → the selected log → Insights (weekday rhythm, wins vs. misses, and
+activities / people / sleep / markers cards that only appear when the range has that data). Data quirks the code relies on: metrics can be decimals or numeric strings
+(`num()` coerces), ~640 old logs have no metrics at all (excluded from the chart via
+`buildPoints`), and Flow only exists since mid-2025. The chart
+([trend-chart.tsx](src/components/dashboard/trend-chart.tsx)) is a hand-built SVG, one column per
+log (not per day), horizontally scrollable with zoom levels; it **only renders the visible window
+± overscan** (the "All" range is ~4.3k columns), so keep it windowed. Lines break and show a gap
+pill when logs are > 10 days apart. Moving averages are trailing *calendar-day* windows
+(7/30/90d) computed over the full history, then sliced to the range. Success ±1 shows as a
+tinted column wash plus ✓/✗ (zoomed-out: ▲/▼) glyphs in a lane under the plot. Clicking a point
+(or ←/→ on the focused chart) shows that log's `EntryCard` below the chart. Series colours are
+the `--chart-mood/energy/flow` tokens — a CVD-validated set; don't swap in other hues casually.
+`METRICS` references them as `var(--chart-x, #hex)`: keep the hex fallbacks — with a stale dev
+CSS cache a missing token makes SVG strokes vanish (dots still show, lines don't).
 
 Form fields ([entry-fields.tsx](src/components/entry-fields.tsx), shared by New Entry and the
 History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep → Activities → People → Markers → Note

@@ -28,7 +28,7 @@ function Metric({ label, value }: { label: string; value: number | null }) {
  * from the old app carry the import timestamp instead of the real one, so the time is only
  * shown when `created_at` falls on the entry's own (local) day.
  */
-function loggedTime(entry: DecryptedEntry): string | null {
+export function loggedTime(entry: DecryptedEntry): string | null {
   if (!entry.created_at) return null;
   const created = parseISO(entry.created_at);
   if (Number.isNaN(created.getTime())) return null;
