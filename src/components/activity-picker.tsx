@@ -13,8 +13,8 @@ export const FEELING_OPTIONS: Record<ActivityFeeling, LevelOption> = {
     text: "text-feel-rough",
     bar: "bg-feel-rough",
     active:
-      "border-feel-rough/70 bg-linear-to-b from-feel-rough/20 to-feel-rough/5 shadow-[0_0_22px_-10px_var(--feel-rough)]",
-    badge: "border-feel-rough/40 bg-feel-rough/15 text-feel-rough",
+      "border-feel-rough/60 bg-linear-to-b from-feel-rough/20 to-feel-rough/5 shadow-[0_8px_20px_-12px_var(--feel-rough)]",
+    badge: "border-feel-rough/30 bg-feel-rough/10 text-feel-rough",
   },
   2: {
     label: "OK",
@@ -22,8 +22,8 @@ export const FEELING_OPTIONS: Record<ActivityFeeling, LevelOption> = {
     text: "text-feel-ok",
     bar: "bg-feel-ok",
     active:
-      "border-feel-ok/70 bg-linear-to-b from-feel-ok/20 to-feel-ok/5 shadow-[0_0_22px_-10px_var(--feel-ok)]",
-    badge: "border-feel-ok/40 bg-feel-ok/15 text-feel-ok",
+      "border-feel-ok/60 bg-linear-to-b from-feel-ok/20 to-feel-ok/5 shadow-[0_8px_20px_-12px_var(--feel-ok)]",
+    badge: "border-feel-ok/30 bg-feel-ok/10 text-feel-ok",
   },
   3: {
     label: "Great",
@@ -31,16 +31,16 @@ export const FEELING_OPTIONS: Record<ActivityFeeling, LevelOption> = {
     text: "text-feel-great",
     bar: "bg-feel-great",
     active:
-      "border-feel-great/70 bg-linear-to-b from-feel-great/20 to-feel-great/5 shadow-[0_0_22px_-10px_var(--feel-great)]",
-    badge: "border-feel-great/40 bg-feel-great/15 text-feel-great",
+      "border-feel-great/60 bg-linear-to-b from-feel-great/20 to-feel-great/5 shadow-[0_8px_20px_-12px_var(--feel-great)]",
+    badge: "border-feel-great/30 bg-feel-great/10 text-feel-great",
   },
 };
 
 /** Tint for a rated activity's card (border + faint wash), matching its feeling. */
 const FEELING_CARD: Record<ActivityFeeling, string> = {
-  1: "border-feel-rough/40 bg-feel-rough/5",
-  2: "border-feel-ok/40 bg-feel-ok/5",
-  3: "border-feel-great/40 bg-feel-great/5",
+  1: "border-feel-rough/30 bg-feel-rough/[0.04]",
+  2: "border-feel-ok/30 bg-feel-ok/[0.04]",
+  3: "border-feel-great/30 bg-feel-great/[0.04]",
 };
 
 /** Form-side activity: picked but possibly not rated yet (`feeling: null`). */
@@ -124,8 +124,8 @@ export function ActivityPicker({
               aria-pressed={on}
               onClick={() => toggle(key)}
               className={cn(
-                "flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
-                on && "border-foreground/40 bg-accent text-foreground",
+                "flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
+                on && "border-foreground/30 bg-accent text-foreground",
                 // Once rated, the chip glows in the feeling's colour like a selected tile.
                 o && cn(o.active, o.text, "hover:bg-transparent"),
               )}
@@ -143,7 +143,7 @@ export function ActivityPicker({
           <div
             key={activity}
             className={cn(
-              "flex flex-col gap-2 rounded-lg border border-border/60 p-3 transition-colors duration-200",
+              "flex flex-col gap-2 rounded-xl border border-border bg-background/40 p-3 transition-colors duration-200",
               feeling && FEELING_CARD[feeling],
             )}
           >

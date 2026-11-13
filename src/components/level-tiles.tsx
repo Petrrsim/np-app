@@ -27,7 +27,7 @@ export function LevelBars({ level, bar, lit }: { level: Level; bar: string; lit:
           key={n}
           className={cn(
             "h-1 w-3.5 rounded-full transition-colors",
-            n <= level ? (lit ? bar : "bg-muted-foreground/40") : "bg-muted-foreground/15",
+            n <= level ? (lit ? bar : "bg-muted-foreground/45") : "bg-muted-foreground/15",
           )}
         />
       ))}
@@ -66,7 +66,7 @@ export function LevelTiles<L extends Level>({
             aria-checked={selected}
             onClick={() => onChange(selected ? null : level)}
             className={cn(
-              "group flex h-20 flex-col items-center justify-center gap-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
+              "group flex h-20 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
               className,
               selected && cn(o.active, o.text, "hover:bg-transparent"),
             )}

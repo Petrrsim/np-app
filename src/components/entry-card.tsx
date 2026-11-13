@@ -11,8 +11,8 @@ import { ActivityBadge } from "@/components/activity-picker";
 
 function Metric({ label, value }: { label: string; value: number | null }) {
   return (
-    <div className="flex flex-col items-center rounded-md bg-muted/60 px-3 py-2">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
+    <div className="flex flex-col items-center rounded-lg bg-muted/70 px-3 py-2">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
       <span className="text-lg font-semibold tabular-nums">{value ?? "–"}</span>
     </div>
   );
@@ -63,7 +63,7 @@ export function EntryCard({ entry }: { entry: DecryptedEntry }) {
         </div>
 
         {entry.comment?.trim() ? (
-          <p className="whitespace-pre-wrap text-sm text-foreground/90">{entry.comment}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">{entry.comment}</p>
         ) : (
           <p className="text-sm italic text-muted-foreground">No note</p>
         )}

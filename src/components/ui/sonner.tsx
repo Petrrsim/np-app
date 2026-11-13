@@ -5,12 +5,12 @@ import { Toaster as Sonner } from "sonner";
 export function Toaster() {
   return (
     <Sonner
-      theme="dark"
+      theme="light"
       position="top-center"
       toastOptions={{
         classNames: {
           toast:
-            "group rounded-md border border-border bg-card text-card-foreground shadow-lg",
+            "group rounded-xl border border-border bg-card text-card-foreground shadow-card",
           description: "text-muted-foreground",
         },
       }}

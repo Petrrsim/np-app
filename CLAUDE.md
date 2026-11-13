@@ -44,7 +44,7 @@ Everything below is standard Next.js infrastructure — there are no leftovers f
 ```
 src/
   app/
-    layout.tsx · providers.tsx · globals.css   root shell (html.dark, QueryClient + AuthProvider, Toaster, theme)
+    layout.tsx · providers.tsx · globals.css   root shell (light theme, QueryClient + AuthProvider, Toaster, theme)
     icon.png · apple-icon.png                  tab favicon (192px) + iOS home-screen icon (180px), resized
                                                from media/np_logo.png (file-convention icons, no <link> code)
     login/page.tsx                             bare login screen (signInWithPassword)
@@ -105,6 +105,8 @@ UI style: success, sleep and activity feeling are 3-tile pickers sharing one loo
 tinted gradient + glow when selected, and a 3-segment bar (sleep/feeling = level meter, success =
 position marker). No emojis. Once an activity is rated, its chip gets the same gradient + glow and
 its card a tinted border/wash in the feeling colour; unrated picks stay neutral.
+Light "paper & ink" theme (warm off-white page, white cards with `shadow-card`, near-black
+primary matching the logo); scale colours use 600–700 shades so they read as text on white.
 Colours are theme tokens in `globals.css` (`--success`, `--destructive`, `--sleep-poor/fine/good`,
 `--feel-rough/ok/great`). Sleep and activity feeling both render through `LevelTiles` /
 `LevelBars` in `level-tiles.tsx`. `SuccessBadge` / `SleepBadge` / `ActivityBadge` (exported from

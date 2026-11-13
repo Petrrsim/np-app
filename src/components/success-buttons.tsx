@@ -15,8 +15,8 @@ export const SUCCESS_OPTIONS: Record<
     text: "text-destructive",
     bar: "bg-destructive",
     active:
-      "border-destructive/70 bg-linear-to-b from-destructive/20 to-destructive/5 shadow-[0_0_22px_-10px_var(--destructive)]",
-    badge: "border-destructive/40 bg-destructive/15 text-destructive",
+      "border-destructive/60 bg-linear-to-b from-destructive/20 to-destructive/5 shadow-[0_8px_20px_-12px_var(--destructive)]",
+    badge: "border-destructive/30 bg-destructive/10 text-destructive",
   },
   0: {
     label: "Neutral",
@@ -25,7 +25,7 @@ export const SUCCESS_OPTIONS: Record<
     text: "text-foreground",
     bar: "bg-foreground",
     active:
-      "border-foreground/50 bg-linear-to-b from-foreground/15 to-foreground/5 shadow-[0_0_22px_-10px_var(--foreground)]",
+      "border-foreground/40 bg-linear-to-b from-foreground/10 to-foreground/[0.03] shadow-[0_8px_20px_-12px_var(--foreground)]",
     badge: "border-border bg-muted text-muted-foreground",
   },
   1: {
@@ -35,8 +35,8 @@ export const SUCCESS_OPTIONS: Record<
     text: "text-success",
     bar: "bg-success",
     active:
-      "border-success/70 bg-linear-to-b from-success/20 to-success/5 shadow-[0_0_22px_-10px_var(--success)]",
-    badge: "border-success/40 bg-success/15 text-success",
+      "border-success/60 bg-linear-to-b from-success/20 to-success/5 shadow-[0_8px_20px_-12px_var(--success)]",
+    badge: "border-success/30 bg-success/10 text-success",
   },
 };
 
@@ -51,7 +51,7 @@ function StepMarker({ step, bar, lit }: { step: SuccessStep; bar: string; lit: b
           key={n}
           className={cn(
             "h-1 w-3.5 rounded-full transition-colors",
-            n === step ? (lit ? bar : "bg-muted-foreground/40") : "bg-muted-foreground/15",
+            n === step ? (lit ? bar : "bg-muted-foreground/45") : "bg-muted-foreground/15",
           )}
         />
       ))}
@@ -81,7 +81,7 @@ export function SuccessButtons({
               aria-checked={selected}
               onClick={() => onChange(step)}
               className={cn(
-                "group flex h-20 flex-col items-center justify-center gap-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
+                "group flex h-20 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
                 selected && cn(o.active, o.text, "hover:bg-transparent"),
               )}
             >

@@ -27,7 +27,7 @@ export function EntryForm() {
   return (
     <Card className="w-full max-w-xl">
       <CardHeader>
-        <CardTitle>New Entry</CardTitle>
+        <CardTitle className="text-xl">New Entry</CardTitle>
         <p className="text-sm text-muted-foreground">{format(today, "EEEE, d MMMM yyyy")}</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">

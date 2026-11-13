@@ -12,8 +12,8 @@ export const SLEEP_OPTIONS: Record<SleepQuality, LevelOption> = {
     text: "text-sleep-poor",
     bar: "bg-sleep-poor",
     active:
-      "border-sleep-poor/70 bg-linear-to-b from-sleep-poor/20 to-sleep-poor/5 shadow-[0_0_22px_-10px_var(--sleep-poor)]",
-    badge: "border-sleep-poor/40 bg-sleep-poor/15 text-sleep-poor",
+      "border-sleep-poor/60 bg-linear-to-b from-sleep-poor/20 to-sleep-poor/5 shadow-[0_8px_20px_-12px_var(--sleep-poor)]",
+    badge: "border-sleep-poor/30 bg-sleep-poor/10 text-sleep-poor",
   },
   2: {
     label: "Fine",
@@ -21,8 +21,8 @@ export const SLEEP_OPTIONS: Record<SleepQuality, LevelOption> = {
     text: "text-sleep-fine",
     bar: "bg-sleep-fine",
     active:
-      "border-sleep-fine/70 bg-linear-to-b from-sleep-fine/20 to-sleep-fine/5 shadow-[0_0_22px_-10px_var(--sleep-fine)]",
-    badge: "border-sleep-fine/40 bg-sleep-fine/15 text-sleep-fine",
+      "border-sleep-fine/60 bg-linear-to-b from-sleep-fine/20 to-sleep-fine/5 shadow-[0_8px_20px_-12px_var(--sleep-fine)]",
+    badge: "border-sleep-fine/30 bg-sleep-fine/10 text-sleep-fine",
   },
   3: {
     label: "Good",
@@ -30,8 +30,8 @@ export const SLEEP_OPTIONS: Record<SleepQuality, LevelOption> = {
     text: "text-sleep-good",
     bar: "bg-sleep-good",
     active:
-      "border-sleep-good/70 bg-linear-to-b from-sleep-good/20 to-sleep-good/5 shadow-[0_0_22px_-10px_var(--sleep-good)]",
-    badge: "border-sleep-good/40 bg-sleep-good/15 text-sleep-good",
+      "border-sleep-good/60 bg-linear-to-b from-sleep-good/20 to-sleep-good/5 shadow-[0_8px_20px_-12px_var(--sleep-good)]",
+    badge: "border-sleep-good/30 bg-sleep-good/10 text-sleep-good",
   },
 };
 

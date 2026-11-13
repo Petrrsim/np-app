@@ -22,7 +22,7 @@ export default function HistoryPage() {
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">History</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">History</h1>
         <div className="flex items-center gap-2">
           {selected && (
             <Button variant="ghost" size="sm" onClick={() => setSelected(undefined)}>
@@ -36,7 +36,7 @@ export default function HistoryPage() {
       {isLoading && (
         <div className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-40 animate-pulse rounded-xl border border-border bg-card" />
+            <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted" />
           ))}
         </div>
       )}
@@ -48,7 +48,7 @@ export default function HistoryPage() {
       )}
 
       {!isLoading && !isError && filtered.length === 0 && (
-        <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-2xl border border-dashed border-input bg-card/50 p-8 text-center text-sm text-muted-foreground">
           {selected ? "No logs for this day." : "No entries yet — create your first one on New Entry."}
         </p>
       )}

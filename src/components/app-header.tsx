@@ -18,18 +18,20 @@ export function AppHeader() {
   const { signOut } = useAuth();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-card/75 backdrop-blur-md">
       <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-4">
         <div className="flex items-center gap-2 sm:gap-3">
           <NpLogo size={28} />
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-0.5 rounded-xl bg-muted p-1">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent",
-                  pathname === l.href ? "bg-accent text-foreground" : "text-muted-foreground"
+                  "rounded-lg px-3 py-1 text-sm font-medium transition-all",
+                  pathname === l.href
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {l.label}
