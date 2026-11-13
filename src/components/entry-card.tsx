@@ -8,6 +8,9 @@ import { DeleteEntryButton } from "@/components/delete-entry-button";
 import { SleepBadge } from "@/components/sleep-picker";
 import { SuccessBadge } from "@/components/success-buttons";
 import { ActivityBadge } from "@/components/activity-picker";
+import { MarkerBadge } from "@/components/marker-picker";
+import { useMarkers } from "@/hooks/use-entries";
+import { splitMatches } from "@/lib/search";
 
 function Metric({ label, value }: { label: string; value: number | null }) {
   return (
@@ -31,8 +34,10 @@ function loggedTime(entry: DecryptedEntry): string | null {
   return format(created, "HH:mm");
 }
 
-export function EntryCard({ entry }: { entry: DecryptedEntry }) {
+export function EntryCard({ entry, highlight = "" }: { entry: DecryptedEntry; highlight?: string }) {
   const time = loggedTime(entry);
+  const { data: markers } = useMarkers();
+  const entryMarkers = (markers ?? []).filter((m) => entry.markers?.includes(m.id));
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 p-4">
@@ -48,6 +53,7 @@ export function EntryCard({ entry }: { entry: DecryptedEntry }) {
               <SuccessBadge value={entry.success_step} />
               {entry.sleep_quality && <SleepBadge value={entry.sleep_quality} />}
               {entry.activities?.map((a) => <ActivityBadge key={a.activity} value={a} />)}
+              {entryMarkers.map((m) => <MarkerBadge key={m.id} marker={m} />)}
             </div>
           </div>
           <div className="flex shrink-0 items-center">
@@ -63,7 +69,17 @@ export function EntryCard({ entry }: { entry: DecryptedEntry }) {
         </div>
 
         {entry.comment?.trim() ? (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">{entry.comment}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
+            {splitMatches(entry.comment, highlight).map((part, i) =>
+              part.match ? (
+                <mark key={i} className="rounded-sm bg-yellow-200/80 px-0.5 text-foreground">
+                  {part.text}
+                </mark>
+              ) : (
+                part.text
+              )
+            )}
+          </p>
         ) : (
           <p className="text-sm italic text-muted-foreground">No note</p>
         )}

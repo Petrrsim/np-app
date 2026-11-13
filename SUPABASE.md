@@ -57,6 +57,30 @@ function, which returns `comment` as a decrypted `string`.
 own rows; insert also requires the target entry to belong to the user. Accessed only by direct
 table queries (non-sensitive) — the edge functions don't know about it.
 
+### `np_markers` — user-defined markers (added 2026-11-13)
+
+| column       | type                         | notes |
+| ------------ | ---------------------------- | ----- |
+| `id`         | bigint identity              | PK; display order = creation order |
+| `user_id`    | uuid → `auth.users.id`       | defaults to `auth.uid()`; RLS scopes rows to the user |
+| `name`       | text (1–40 chars, trimmed)   | unique per user, case-insensitive (`lower(name)`) |
+| `created_at` | timestamptz                  | |
+
+Seeded with: synchronicity, injury, sickness, X, positive, negative. New markers are created
+from the New Entry / Edit form. RLS: select/insert/update/delete own rows.
+
+### `np_entry_markers` — markers attached to a log (added 2026-11-13)
+
+| column       | type                       | notes |
+| ------------ | -------------------------- | ----- |
+| `entry_id`   | bigint → `np_entries.id`   | `on delete cascade` |
+| `marker_id`  | bigint → `np_markers.id`   | `on delete cascade` |
+| `user_id`    | uuid → `auth.users.id`     | defaults to `auth.uid()` |
+| `created_at` | timestamptz                | |
+
+PK `(entry_id, marker_id)`. RLS: select/delete own rows; insert requires both the entry and the
+marker to belong to the user. Direct table access only, same pattern as activities.
+
 ### `np_profiles` — user profile
 
 | column         | type            | notes |
@@ -101,5 +125,5 @@ Invoked via `supabase.functions.invoke(name, { body })`:
 
 1. All entry **reads/writes** go through the edge functions above — never read
    `np_entries.comment` or write `comment_encrypted` directly.
-2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_entry_activities`, entry deletion) may use direct table access.
+2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_entry_activities`, `np_markers`, `np_entry_markers`, entry deletion) may use direct table access.
 3. Keep `entry_date` formatted as `yyyy-MM-dd`.

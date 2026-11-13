@@ -28,13 +28,13 @@ async function invoke<T>(name: string, body?: Record<string, unknown>): Promise<
  * must go through these edge functions — never touch np_entries.comment(_encrypted) directly.
  */
 export const edge = {
-  // `sleep` and `activities` are not part of the deployed functions' contract — they're written
+  // `sleep`, `activities` and `markers` are not part of the deployed functions' contract — they're written
   // by direct table access in use-entries.ts, so they're stripped from the edge payloads here.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  saveEntry: ({ sleep: _sleep, activities: _activities, ...payload }: SaveEntryPayload) =>
+  saveEntry: ({ sleep: _sleep, activities: _activities, markers: _markers, ...payload }: SaveEntryPayload) =>
     invoke<{ ok: true; id?: number }>("save-entry", { ...payload }),
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  updateEntry: ({ id, note, sleep: _sleep, activities: _activities, ...rest }: UpdateEntryPayload) =>
+  updateEntry: ({ id, note, sleep: _sleep, activities: _activities, markers: _markers, ...rest }: UpdateEntryPayload) =>
     // The deployed update-entry function expects `entryId`/`comment`, not `id`/`note`.
     invoke<{ ok: true }>("update-entry", { entryId: id, comment: note, ...rest }),
   // Returns newest-first. Defaults to only 20 rows; `limit` is capped at 1000 server-side,

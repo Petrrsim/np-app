@@ -55,13 +55,13 @@ src/
                     alert-dialog, popover, sonner)
     *.tsx           features: app-header, np-logo, auth-gate, entry-form, entry-fields,
                     metric-slider, success-buttons, level-tiles, sleep-picker,
-                    activity-picker, entry-card,
+                    activity-picker, marker-picker, entry-card,
                     edit-entry-dialog, delete-entry-button, date-picker
   contexts/         auth-context.tsx (useAuth)
   hooks/            use-entries.ts (list/create/update/delete incl. activities, latest metrics,
                     sleep-logged-on)
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
-                    activities.ts (activity list)
+                    activities.ts (activity list), search.ts (History note search + highlight)
   types/            db.ts (shared domain types / DB contract)
 media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx; source for the icons)
 .env              Supabase connection (gitignored)        .env.example  template
@@ -81,12 +81,20 @@ package.json · package-lock.json   dependencies          node_modules/  install
 
 A personal "diary" tool recording mood/energy/flow (sliders, 1–12), success (No −1 / Neutral 0 /
 Yes 1), an optional sleep quality (Poor 1 / Fine 2 / Good 3), optional activities each rated
-by feeling (Rough 1 / OK 2 / Great 3) and an encrypted note. Several logs
+by feeling (Rough 1 / OK 2 / Great 3), optional markers (user-defined tags) and an encrypted note. Several logs
 per day are normal (e.g. morning + afternoon). **New Entry** (`/`) always logs for today; **History**
-lists logs newest→oldest with per-log edit/delete and a calendar date filter.
+lists logs newest→oldest with per-log edit/delete and three combinable filters: a calendar date,
+a word search over notes, and a marker filter (chips with counts; a log must carry every selected
+marker).
+
+History search: client-side over the already-decrypted `comment` (no server query — notes are
+encrypted at rest). Matching is case- and diacritic-insensitive and substring-based ("uz" finds
+"Už"); matches are highlighted with `<mark>` in [entry-card.tsx](src/components/entry-card.tsx)
+via the `highlight` prop. Helpers (`matchesQuery`, `splitMatches`) live in
+[src/lib/search.ts](src/lib/search.ts). Marker chip counts reflect the date + word filters.
 
 Form fields ([entry-fields.tsx](src/components/entry-fields.tsx), shared by New Entry and the
-History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep → Activities → Note
+History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep → Activities → Markers → Note
 (placeholder "What's up bro?").
 
 New Entry behaviour:
@@ -100,6 +108,10 @@ New Entry behaviour:
   its own Rough/OK/Great tiles. Saving is blocked (toast) until every picked activity is rated.
   The list lives in code: [src/lib/activities.ts](src/lib/activities.ts) (`ACTIVITIES` — add a
   `{ key, label, Icon }` line; never rename a stored `key`; no DB change needed).
+- **Markers are optional per log, any number** — toggle chips ([marker-picker.tsx](src/components/marker-picker.tsx)).
+  Unlike activities, the list lives in the DB (`np_markers`, via `useMarkers`/`useCreateMarker`):
+  the "New" chip creates one inline and selects it. Entries reference markers by id
+  (`DecryptedEntry.markers: number[]`, from `np_entry_markers`). Markers reset to `[]` after saving.
 
 UI style: success, sleep and activity feeling are 3-tile pickers sharing one look — lucide icon,
 tinted gradient + glow when selected, and a 3-segment bar (sleep/feeling = level meter, success =
@@ -128,6 +140,8 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
    newest row for that date); `useEntries` merges a direct `select id, sleep_quality` in by `id`.
    Activities live in their own table `np_entry_activities` (direct access, same pattern: insert
    after `save-entry`, delete-dropped + upsert on edit, merged into `DecryptedEntry.activities`).
+   Markers work the same way via `np_entry_markers` (merged into `DecryptedEntry.markers`); the
+   marker list itself is `np_markers` under its own query key `MARKERS_KEY`.
 
 ### State
 

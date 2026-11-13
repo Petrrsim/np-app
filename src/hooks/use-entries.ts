@@ -4,12 +4,14 @@ import { edge } from "@/lib/edge";
 import type {
   DecryptedEntry,
   EntryActivity,
+  Marker,
   SaveEntryPayload,
   SleepQuality,
   UpdateEntryPayload,
 } from "@/types/db";
 
 export const ENTRIES_KEY = ["entries"] as const;
+export const MARKERS_KEY = ["markers"] as const;
 
 // decrypt-entries returns at most 1000 rows per call (20 if no limit is sent).
 const PAGE_SIZE = 1000;
@@ -26,12 +28,13 @@ async function fetchAllEntries(): Promise<DecryptedEntry[]> {
 
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const range = Array.from({ length: pages }, (_, i) => i);
-  const [results, sleep, activities] = await Promise.all([
+  const [results, sleep, activities, markers] = await Promise.all([
     Promise.all(
       range.map((i) => edge.decryptEntries({ limit: PAGE_SIZE, offset: i * PAGE_SIZE })),
     ),
     fetchSleepById(range),
     fetchActivitiesByEntry(),
+    fetchMarkersByEntry(),
   ]);
 
   // Dedupe by id in case an entry was added/removed between page requests.
@@ -43,6 +46,7 @@ async function fetchAllEntries(): Promise<DecryptedEntry[]> {
         comment: e.comment ?? "",
         sleep_quality: sleep.get(e.id) ?? null,
         activities: activities.get(e.id) ?? [],
+        markers: markers.get(e.id) ?? [],
       });
     }
   }
@@ -90,6 +94,51 @@ async function fetchActivitiesByEntry(): Promise<Map<number, EntryActivity[]>> {
     if (!data || data.length < PAGE_SIZE) break;
   }
   return map;
+}
+
+/** All entry↔marker links (direct RLS-scoped read), grouped by entry id. */
+async function fetchMarkersByEntry(): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>();
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("np_entry_markers")
+      .select("entry_id, marker_id")
+      .order("entry_id")
+      .order("marker_id")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const list = map.get(row.entry_id) ?? [];
+      list.push(row.marker_id);
+      map.set(row.entry_id, list);
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return map;
+}
+
+async function insertMarkers(entryId: number, markerIds: number[]) {
+  if (markerIds.length === 0) return;
+  const { error } = await supabase
+    .from("np_entry_markers")
+    .insert(markerIds.map((marker_id) => ({ entry_id: entryId, marker_id })));
+  if (error) throw error;
+}
+
+/** Makes the entry's markers exactly `markerIds`: removes dropped ones, adds new ones. */
+async function replaceMarkers(entryId: number, markerIds: number[]) {
+  let del = supabase.from("np_entry_markers").delete().eq("entry_id", entryId);
+  if (markerIds.length > 0) del = del.not("marker_id", "in", `(${markerIds.join(",")})`);
+  const { error } = await del;
+  if (error) throw error;
+  if (markerIds.length === 0) return;
+  const { error: upsertError } = await supabase
+    .from("np_entry_markers")
+    .upsert(
+      markerIds.map((marker_id) => ({ entry_id: entryId, marker_id })),
+      { onConflict: "entry_id,marker_id", ignoreDuplicates: true },
+    );
+  if (upsertError) throw upsertError;
 }
 
 async function insertActivities(entryId: number, activities: EntryActivity[]) {
@@ -210,7 +259,9 @@ export function useCreateEntry() {
   return useMutation({
     mutationFn: async (payload: SaveEntryPayload) => {
       const res = await edge.saveEntry(payload);
-      if (payload.sleep == null && payload.activities.length === 0) return res;
+      if (payload.sleep == null && payload.activities.length === 0 && payload.markers.length === 0) {
+        return res;
+      }
 
       const id = await resolveNewEntryId(res?.id, payload.entry_date);
       if (payload.sleep != null) {
@@ -225,6 +276,12 @@ export function useCreateEntry() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`Entry saved, but activities failed: ${msg}`);
+      }
+      try {
+        await insertMarkers(id, payload.markers);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Entry saved, but markers failed: ${msg}`);
       }
       return res;
     },
@@ -247,6 +304,7 @@ export function useUpdateEntry() {
         .eq("id", payload.id);
       if (error) throw error;
       await replaceActivities(payload.id, payload.activities);
+      await replaceMarkers(payload.id, payload.markers);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ENTRIES_KEY }),
   });
@@ -255,11 +313,43 @@ export function useUpdateEntry() {
 export function useDeleteEntry() {
   const qc = useQueryClient();
   return useMutation({
-    // np_entry_activities rows go with it (on delete cascade).
+    // np_entry_activities / np_entry_markers rows go with it (on delete cascade).
     mutationFn: async (id: number) => {
       const { error } = await supabase.from("np_entries").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ENTRIES_KEY }),
+  });
+}
+
+/** The user's marker list, in creation order. */
+export function useMarkers() {
+  return useQuery({
+    queryKey: MARKERS_KEY,
+    queryFn: async (): Promise<Marker[]> => {
+      const { data, error } = await supabase.from("np_markers").select("id, name").order("id");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useCreateMarker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string): Promise<Marker> => {
+      const { data, error } = await supabase
+        .from("np_markers")
+        .insert({ name: name.trim() })
+        .select("id, name")
+        .single();
+      if (error) {
+        // Unique (user_id, lower(name)) violation.
+        if (error.code === "23505") throw new Error(`Marker "${name.trim()}" already exists`);
+        throw error;
+      }
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: MARKERS_KEY }),
   });
 }

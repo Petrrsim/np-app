@@ -15,7 +15,7 @@ import {
   type LatestMetrics,
 } from "@/hooks/use-entries";
 
-/** Fresh form: sliders carry over from the previous log; success, sleep, activities and note start empty. */
+/** Fresh form: sliders carry over from the previous log; success, sleep, activities, markers and note start empty. */
 function freshFields(sliders: LatestMetrics | null | undefined): EntryFieldsValue {
   return sliders ? { ...ENTRY_DEFAULTS, ...sliders } : ENTRY_DEFAULTS;
 }

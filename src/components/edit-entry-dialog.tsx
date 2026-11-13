@@ -26,6 +26,7 @@ function toFields(e: DecryptedEntry): EntryFieldsValue {
     success: (e.success_step ?? 0) as SuccessStep,
     sleep: e.sleep_quality ?? null,
     activities: (e.activities ?? []).map((a) => ({ ...a })),
+    markers: [...(e.markers ?? [])],
     note: e.comment ?? "",
   };
 }
