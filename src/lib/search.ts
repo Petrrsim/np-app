@@ -1,16 +1,12 @@
 /** Lowercase + strip diacritics, so "uz" matches "Už" (Czech notes). */
 function foldChar(c: string): string {
+  // ASCII fast path: no diacritics to strip (most of any note).
+  if (c < "\u0080") return c.toLowerCase();
   return c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
 export function foldText(text: string): string {
   return Array.from(text, foldChar).join("");
-}
-
-/** True if `text` contains `query` (case- and accent-insensitive). Empty query matches everything. */
-export function matchesQuery(text: string, query: string): boolean {
-  const q = foldText(query.trim());
-  return q === "" || foldText(text).includes(q);
 }
 
 /**

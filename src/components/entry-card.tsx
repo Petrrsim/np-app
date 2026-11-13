@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { format, parseISO } from "date-fns";
 import type { DecryptedEntry } from "@/types/db";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,8 +9,9 @@ import { DeleteEntryButton } from "@/components/delete-entry-button";
 import { SleepBadge } from "@/components/sleep-picker";
 import { SuccessBadge } from "@/components/success-buttons";
 import { ActivityBadge } from "@/components/activity-picker";
+import { PersonBadge } from "@/components/people-picker";
 import { MarkerBadge } from "@/components/marker-picker";
-import { useMarkers } from "@/hooks/use-entries";
+import { useMarkers, usePeople } from "@/hooks/use-entries";
 import { splitMatches } from "@/lib/search";
 
 function Metric({ label, value }: { label: string; value: number | null }) {
@@ -34,9 +36,19 @@ function loggedTime(entry: DecryptedEntry): string | null {
   return format(created, "HH:mm");
 }
 
-export function EntryCard({ entry, highlight = "" }: { entry: DecryptedEntry; highlight?: string }) {
+// Memoized: a refetch keeps unchanged entries referentially equal (TanStack structural
+// sharing), so only the cards whose data changed re-render.
+export const EntryCard = memo(function EntryCard({
+  entry,
+  highlight = "",
+}: {
+  entry: DecryptedEntry;
+  highlight?: string;
+}) {
   const time = loggedTime(entry);
   const { data: markers } = useMarkers();
+  const { data: people } = usePeople();
+  const nameOf = (id: number) => people?.find((p) => p.id === id)?.name;
   const entryMarkers = (markers ?? []).filter((m) => entry.markers?.includes(m.id));
   return (
     <Card>
@@ -53,6 +65,10 @@ export function EntryCard({ entry, highlight = "" }: { entry: DecryptedEntry; hi
               <SuccessBadge value={entry.success_step} />
               {entry.sleep_quality && <SleepBadge value={entry.sleep_quality} />}
               {entry.activities?.map((a) => <ActivityBadge key={a.activity} value={a} />)}
+              {entry.people?.map((p) => {
+                const name = nameOf(p.person_id);
+                return name ? <PersonBadge key={p.person_id} name={name} np={p.np} /> : null;
+              })}
               {entryMarkers.map((m) => <MarkerBadge key={m.id} marker={m} />)}
             </div>
           </div>
@@ -86,4 +102,4 @@ export function EntryCard({ entry, highlight = "" }: { entry: DecryptedEntry; hi
       </CardContent>
     </Card>
   );
-}
+});

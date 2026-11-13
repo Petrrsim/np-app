@@ -16,7 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { EntryFields, type EntryFieldsValue } from "@/components/entry-fields";
 import { firstUnrated, toEntryActivities } from "@/components/activity-picker";
-import { useUpdateEntry } from "@/hooks/use-entries";
+import { firstUnratedPerson, toEntryPeople } from "@/components/people-picker";
+import { usePeople, useUpdateEntry } from "@/hooks/use-entries";
 
 function toFields(e: DecryptedEntry): EntryFieldsValue {
   return {
@@ -26,6 +27,7 @@ function toFields(e: DecryptedEntry): EntryFieldsValue {
     success: (e.success_step ?? 0) as SuccessStep,
     sleep: e.sleep_quality ?? null,
     activities: (e.activities ?? []).map((a) => ({ ...a })),
+    people: (e.people ?? []).map((p) => ({ ...p })),
     markers: [...(e.markers ?? [])],
     note: e.comment ?? "",
   };
@@ -35,6 +37,7 @@ export function EditEntryDialog({ entry }: { entry: DecryptedEntry }) {
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState<EntryFieldsValue>(() => toFields(entry));
   const update = useUpdateEntry();
+  const { data: people } = usePeople();
 
   function handleOpenChange(next: boolean) {
     if (next) setFields(toFields(entry));
@@ -47,11 +50,17 @@ export function EditEntryDialog({ entry }: { entry: DecryptedEntry }) {
       toast.error(`Rate how ${unrated} felt`);
       return;
     }
+    const unratedPerson = firstUnratedPerson(fields.people, people);
+    if (unratedPerson) {
+      toast.error(`Rate ${unratedPerson}'s NP`);
+      return;
+    }
     try {
       await update.mutateAsync({
         id: entry.id,
         ...fields,
         activities: toEntryActivities(fields.activities),
+        people: toEntryPeople(fields.people),
       });
       toast.success("Entry updated");
       setOpen(false);

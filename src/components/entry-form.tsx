@@ -8,14 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntryFields, ENTRY_DEFAULTS, type EntryFieldsValue } from "@/components/entry-fields";
 import { firstUnrated, toEntryActivities } from "@/components/activity-picker";
+import { firstUnratedPerson, toEntryPeople } from "@/components/people-picker";
 import {
   useCreateEntry,
   useLatestMetrics,
+  usePeople,
   useSleepLoggedOn,
   type LatestMetrics,
 } from "@/hooks/use-entries";
 
-/** Fresh form: sliders carry over from the previous log; success, sleep, activities, markers and note start empty. */
+/** Fresh form: sliders carry over from the previous log; success, sleep, activities, people, markers and note start empty. */
 function freshFields(sliders: LatestMetrics | null | undefined): EntryFieldsValue {
   return sliders ? { ...ENTRY_DEFAULTS, ...sliders } : ENTRY_DEFAULTS;
 }
@@ -49,6 +51,7 @@ function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; today
   const [fields, setFields] = useState<EntryFieldsValue>(initial);
   const create = useCreateEntry();
   const { data: sleepLoggedToday } = useSleepLoggedOn(todayKey);
+  const { data: people } = usePeople();
 
   async function handleSave() {
     const unrated = firstUnrated(fields.activities);
@@ -56,10 +59,16 @@ function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; today
       toast.error(`Rate how ${unrated} felt`);
       return;
     }
+    const unratedPerson = firstUnratedPerson(fields.people, people);
+    if (unratedPerson) {
+      toast.error(`Rate ${unratedPerson}'s NP`);
+      return;
+    }
     try {
       await create.mutateAsync({
         ...fields,
         activities: toEntryActivities(fields.activities),
+        people: toEntryPeople(fields.people),
         entry_date: todayKey,
       });
       toast.success("Entry saved");

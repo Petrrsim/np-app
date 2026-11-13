@@ -81,6 +81,24 @@ from the New Entry / Edit form. RLS: select/insert/update/delete own rows.
 PK `(entry_id, marker_id)`. RLS: select/delete own rows; insert requires both the entry and the
 marker to belong to the user. Direct table access only, same pattern as activities.
 
+### `np_people` — people close to the user (added 2026-11-13)
+
+Same shape and RLS as `np_markers` (`id` identity, `user_id`, `name` 1–40 chars trimmed and
+unique per user case-insensitively, `created_at`). Created inline from the New Entry / Edit form.
+
+### `np_entry_people` — people in a log, with their NP (added 2026-11-13)
+
+| column       | type                       | notes |
+| ------------ | -------------------------- | ----- |
+| `entry_id`   | bigint → `np_entries.id`   | `on delete cascade` |
+| `person_id`  | bigint → `np_people.id`    | `on delete cascade` |
+| `np`         | smallint (1–3)             | person's life energy: 1 low, 2 ok, 3 great |
+| `user_id`    | uuid → `auth.users.id`     | defaults to `auth.uid()` |
+| `created_at` | timestamptz                | |
+
+PK `(entry_id, person_id)`. RLS: select/update/delete own rows; insert requires both the entry
+and the person to belong to the user. Direct table access only.
+
 ### `np_profiles` — user profile
 
 | column         | type            | notes |
@@ -125,5 +143,5 @@ Invoked via `supabase.functions.invoke(name, { body })`:
 
 1. All entry **reads/writes** go through the edge functions above — never read
    `np_entries.comment` or write `comment_encrypted` directly.
-2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_entry_activities`, `np_markers`, `np_entry_markers`, entry deletion) may use direct table access.
+2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_entry_activities`, `np_markers`, `np_entry_markers`, `np_people`, `np_entry_people`, entry deletion) may use direct table access.
 3. Keep `entry_date` formatted as `yyyy-MM-dd`.

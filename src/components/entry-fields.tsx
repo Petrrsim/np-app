@@ -5,6 +5,7 @@ import { MetricSlider } from "@/components/metric-slider";
 import { SuccessButtons } from "@/components/success-buttons";
 import { SleepPicker } from "@/components/sleep-picker";
 import { ActivityPicker, type ActivityDraft } from "@/components/activity-picker";
+import { PeoplePicker, type PersonDraft } from "@/components/people-picker";
 import { MarkerPicker } from "@/components/marker-picker";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -17,6 +18,8 @@ export interface EntryFieldsValue {
   sleep: SleepQuality | null;
   /** Picked activities; each must be rated before saving (see `firstUnrated`). */
   activities: ActivityDraft[];
+  /** Picked people; each must get an NP rating before saving (see `firstUnratedPerson`). */
+  people: PersonDraft[];
   /** Picked marker ids. */
   markers: number[];
   note: string;
@@ -29,6 +32,7 @@ export const ENTRY_DEFAULTS: EntryFieldsValue = {
   success: 0,
   sleep: null,
   activities: [],
+  people: [],
   markers: [],
   note: "",
 };
@@ -54,6 +58,7 @@ export function EntryFields({
         loggedToday={sleepLoggedToday}
       />
       <ActivityPicker value={value.activities} onChange={(v) => onChange({ activities: v })} />
+      <PeoplePicker value={value.people} onChange={(v) => onChange({ people: v })} />
       <MarkerPicker value={value.markers} onChange={(v) => onChange({ markers: v })} />
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium">Note</span>

@@ -1,10 +1,13 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { edge } from "@/lib/edge";
 import type {
   DecryptedEntry,
   EntryActivity,
+  EntryPerson,
   Marker,
+  Person,
   SaveEntryPayload,
   SleepQuality,
   UpdateEntryPayload,
@@ -12,6 +15,7 @@ import type {
 
 export const ENTRIES_KEY = ["entries"] as const;
 export const MARKERS_KEY = ["markers"] as const;
+export const PEOPLE_KEY = ["people"] as const;
 
 // decrypt-entries returns at most 1000 rows per call (20 if no limit is sent).
 const PAGE_SIZE = 1000;
@@ -21,6 +25,15 @@ const PAGE_SIZE = 1000;
  * non-sensitive) count query so all pages can be fetched from the edge function in parallel.
  */
 async function fetchAllEntries(): Promise<DecryptedEntry[]> {
+  // Nothing here depends on the count except pages 2+, so the first page and the
+  // activity/marker reads start right away instead of waiting for it.
+  const firstPage = edge.decryptEntries({ limit: PAGE_SIZE, offset: 0 });
+  const activitiesReq = fetchActivitiesByEntry();
+  const markersReq = fetchMarkersByEntry();
+  const peopleReq = fetchPeopleByEntry();
+  // Avoid unhandled rejections if the count query throws before these are awaited.
+  for (const p of [firstPage, activitiesReq, markersReq, peopleReq]) p.catch(() => {});
+
   const { count, error } = await supabase
     .from("np_entries")
     .select("id", { count: "exact", head: true });
@@ -28,13 +41,16 @@ async function fetchAllEntries(): Promise<DecryptedEntry[]> {
 
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const range = Array.from({ length: pages }, (_, i) => i);
-  const [results, sleep, activities, markers] = await Promise.all([
+  const [results, sleep, activities, markers, people] = await Promise.all([
     Promise.all(
-      range.map((i) => edge.decryptEntries({ limit: PAGE_SIZE, offset: i * PAGE_SIZE })),
+      range.map((i) =>
+        i === 0 ? firstPage : edge.decryptEntries({ limit: PAGE_SIZE, offset: i * PAGE_SIZE }),
+      ),
     ),
     fetchSleepById(range),
-    fetchActivitiesByEntry(),
-    fetchMarkersByEntry(),
+    activitiesReq,
+    markersReq,
+    peopleReq,
   ]);
 
   // Dedupe by id in case an entry was added/removed between page requests.
@@ -46,6 +62,7 @@ async function fetchAllEntries(): Promise<DecryptedEntry[]> {
         comment: e.comment ?? "",
         sleep_quality: sleep.get(e.id) ?? null,
         activities: activities.get(e.id) ?? [],
+        people: people.get(e.id) ?? [],
         markers: markers.get(e.id) ?? [],
       });
     }
@@ -117,6 +134,54 @@ async function fetchMarkersByEntry(): Promise<Map<number, number[]>> {
   return map;
 }
 
+/** All entry↔person links with their NP (direct RLS-scoped read), grouped by entry id. */
+async function fetchPeopleByEntry(): Promise<Map<number, EntryPerson[]>> {
+  const map = new Map<number, EntryPerson[]>();
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("np_entry_people")
+      .select("entry_id, person_id, np")
+      .order("entry_id")
+      .order("created_at")
+      .order("person_id")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const list = map.get(row.entry_id) ?? [];
+      list.push({ person_id: row.person_id, np: row.np });
+      map.set(row.entry_id, list);
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return map;
+}
+
+async function insertPeople(entryId: number, people: EntryPerson[]) {
+  if (people.length === 0) return;
+  const { error } = await supabase
+    .from("np_entry_people")
+    .insert(people.map((p) => ({ entry_id: entryId, ...p })));
+  if (error) throw error;
+}
+
+/** Makes the entry's people exactly `people`: removes dropped ones, upserts the rest. */
+async function replacePeople(entryId: number, people: EntryPerson[]) {
+  let del = supabase.from("np_entry_people").delete().eq("entry_id", entryId);
+  if (people.length > 0) {
+    del = del.not("person_id", "in", `(${people.map((p) => p.person_id).join(",")})`);
+  }
+  const { error } = await del;
+  if (error) throw error;
+  if (people.length === 0) return;
+  const { error: upsertError } = await supabase
+    .from("np_entry_people")
+    .upsert(
+      people.map((p) => ({ entry_id: entryId, ...p })),
+      { onConflict: "entry_id,person_id" },
+    );
+  if (upsertError) throw upsertError;
+}
+
 async function insertMarkers(entryId: number, markerIds: number[]) {
   if (markerIds.length === 0) return;
   const { error } = await supabase
@@ -186,19 +251,32 @@ async function resolveNewEntryId(id: number | undefined, entryDate: string): Pro
   return data.id;
 }
 
+// The full history is ~5 edge calls + decryption of every note, so it's kept fresh for longer
+// than the default; every entry mutation invalidates it anyway.
+const entriesQuery = {
+  queryKey: ENTRIES_KEY,
+  staleTime: 5 * 60_000,
+  queryFn: async () => {
+    const entries = await fetchAllEntries();
+    return entries.sort((a, b) => {
+      if (a.entry_date === b.entry_date) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return a.entry_date < b.entry_date ? 1 : -1;
+    }) as DecryptedEntry[];
+  },
+};
+
 export function useEntries() {
-  return useQuery({
-    queryKey: ENTRIES_KEY,
-    queryFn: async () => {
-      const entries = await fetchAllEntries();
-      return entries.sort((a, b) => {
-        if (a.entry_date === b.entry_date) {
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        }
-        return a.entry_date < b.entry_date ? 1 : -1;
-      }) as DecryptedEntry[];
-    },
-  });
+  return useQuery(entriesQuery);
+}
+
+/** Warms the history cache in the background so History opens without a loading state. */
+export function usePrefetchEntries(enabled: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (enabled) void qc.prefetchQuery(entriesQuery);
+  }, [enabled, qc]);
 }
 
 export interface LatestMetrics {
@@ -259,7 +337,12 @@ export function useCreateEntry() {
   return useMutation({
     mutationFn: async (payload: SaveEntryPayload) => {
       const res = await edge.saveEntry(payload);
-      if (payload.sleep == null && payload.activities.length === 0 && payload.markers.length === 0) {
+      if (
+        payload.sleep == null &&
+        payload.activities.length === 0 &&
+        payload.people.length === 0 &&
+        payload.markers.length === 0
+      ) {
         return res;
       }
 
@@ -278,6 +361,12 @@ export function useCreateEntry() {
         throw new Error(`Entry saved, but activities failed: ${msg}`);
       }
       try {
+        await insertPeople(id, payload.people);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Entry saved, but people failed: ${msg}`);
+      }
+      try {
         await insertMarkers(id, payload.markers);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -285,7 +374,11 @@ export function useCreateEntry() {
       }
       return res;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ENTRIES_KEY }),
+    // Not awaited (the save button shouldn't wait for it); "all" also refreshes the cached
+    // history while still on New Entry, so History already has the new log when opened.
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ENTRIES_KEY, refetchType: "all" });
+    },
   });
 }
 
@@ -304,6 +397,7 @@ export function useUpdateEntry() {
         .eq("id", payload.id);
       if (error) throw error;
       await replaceActivities(payload.id, payload.activities);
+      await replacePeople(payload.id, payload.people);
       await replaceMarkers(payload.id, payload.markers);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ENTRIES_KEY }),
@@ -313,7 +407,7 @@ export function useUpdateEntry() {
 export function useDeleteEntry() {
   const qc = useQueryClient();
   return useMutation({
-    // np_entry_activities / np_entry_markers rows go with it (on delete cascade).
+    // np_entry_activities / np_entry_people / np_entry_markers rows go with it (on delete cascade).
     mutationFn: async (id: number) => {
       const { error } = await supabase.from("np_entries").delete().eq("id", id);
       if (error) throw error;
@@ -351,5 +445,37 @@ export function useCreateMarker() {
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: MARKERS_KEY }),
+  });
+}
+
+/** The user's people list, in creation order. */
+export function usePeople() {
+  return useQuery({
+    queryKey: PEOPLE_KEY,
+    queryFn: async (): Promise<Person[]> => {
+      const { data, error } = await supabase.from("np_people").select("id, name").order("id");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useCreatePerson() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string): Promise<Person> => {
+      const { data, error } = await supabase
+        .from("np_people")
+        .insert({ name: name.trim() })
+        .select("id, name")
+        .single();
+      if (error) {
+        // Unique (user_id, lower(name)) violation.
+        if (error.code === "23505") throw new Error(`"${name.trim()}" is already in your people`);
+        throw error;
+      }
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: PEOPLE_KEY }),
   });
 }

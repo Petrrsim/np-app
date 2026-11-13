@@ -4,10 +4,12 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { usePrefetchEntries } from "@/hooks/use-entries";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   const router = useRouter();
+  usePrefetchEntries(Boolean(session));
 
   useEffect(() => {
     if (!loading && !session) {

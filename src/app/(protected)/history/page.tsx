@@ -1,15 +1,17 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { DecryptedEntry } from "@/types/db";
 import { format } from "date-fns";
 import { Search, X } from "lucide-react";
-import { useEntries, useMarkers } from "@/hooks/use-entries";
+import { useEntries, useMarkers, usePeople } from "@/hooks/use-entries";
 import { EntryCard } from "@/components/entry-card";
 import { DatePicker } from "@/components/date-picker";
 import { MarkerFilter } from "@/components/marker-picker";
+import { PeopleFilter } from "@/components/people-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { matchesQuery } from "@/lib/search";
+import { foldText } from "@/lib/search";
 
 export default function HistoryPage() {
   const { data: entries, isLoading, isError, error } = useEntries();
@@ -17,36 +19,72 @@ export default function HistoryPage() {
   const { data: markers } = useMarkers();
   const [query, setQuery] = useState("");
   const [markerIds, setMarkerIds] = useState<number[]>([]);
+  const { data: people } = usePeople();
+  const [personIds, setPersonIds] = useState<number[]>([]);
   const search = useDeferredValue(query.trim());
 
-  // Date + word filter first; marker counts are taken from this set so they show
-  // how many of the currently visible logs each marker would leave.
+  // Date + word filter first; each chip filter's counts are then taken after the *other*
+  // chip filter, so they show how many logs that chip would leave.
+  // Notes folded once (lazily, on first search) so each keystroke is a plain substring scan
+  // instead of re-folding the whole history.
+  const searching = Boolean(search);
+  const foldedNotes = useMemo(
+    () => (searching && entries ? new Map(entries.map((e) => [e.id, foldText(e.comment ?? "")])) : null),
+    [entries, searching]
+  );
+
   const byDateAndText = useMemo(() => {
     if (!entries) return [];
     const key = selected ? format(selected, "yyyy-MM-dd") : null;
+    const q = foldText(search);
     return entries.filter(
-      (e) => (!key || e.entry_date === key) && (!search || matchesQuery(e.comment ?? "", search))
+      (e) => (!key || e.entry_date === key) && (!q || (foldedNotes?.get(e.id) ?? "").includes(q))
     );
-  }, [entries, selected, search]);
+  }, [entries, selected, search, foldedNotes]);
+
+  // A log must carry every picked marker / include every picked person.
+  const hasMarkers = (e: DecryptedEntry) => markerIds.every((id) => e.markers?.includes(id));
+  const hasPeople = (e: DecryptedEntry) =>
+    personIds.every((id) => e.people?.some((p) => p.person_id === id));
+
+  const byMarkers = useMemo(
+    () => (markerIds.length === 0 ? byDateAndText : byDateAndText.filter(hasMarkers)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [byDateAndText, markerIds]
+  );
+  const byPeople = useMemo(
+    () => (personIds.length === 0 ? byDateAndText : byDateAndText.filter(hasPeople)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [byDateAndText, personIds]
+  );
+  const filtered = useMemo(
+    () => (personIds.length === 0 ? byMarkers : byMarkers.filter(hasPeople)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [byMarkers, personIds]
+  );
 
   const markerCounts = useMemo(() => {
     const counts = new Map<number, number>();
-    for (const e of byDateAndText) for (const id of e.markers ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const e of byPeople) for (const id of e.markers ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
     return counts;
-  }, [byDateAndText]);
+  }, [byPeople]);
 
-  // A log must carry every picked marker.
-  const filtered = useMemo(
-    () =>
-      markerIds.length === 0
-        ? byDateAndText
-        : byDateAndText.filter((e) => markerIds.every((id) => e.markers?.includes(id))),
-    [byDateAndText, markerIds]
-  );
+  const personCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const e of byMarkers) {
+      for (const p of e.people ?? []) counts.set(p.person_id, (counts.get(p.person_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [byMarkers]);
 
-  const filtering = Boolean(search) || markerIds.length > 0;
+  const filtering = Boolean(search) || markerIds.length > 0 || personIds.length > 0;
+  const criteria = [
+    search && `“${search}”`,
+    markerIds.length > 0 && "these markers",
+    personIds.length > 0 && "these people",
+  ].filter(Boolean);
   const emptyMessage = filtering
-    ? `No logs match ${search ? `“${search}”` : "these markers"}${search && markerIds.length ? " with these markers" : ""}${selected ? " on this day" : ""}.`
+    ? `No logs match ${criteria.join(" + ")}${selected ? " on this day" : ""}.`
     : selected
       ? "No logs for this day."
       : "No entries yet — create your first one on New Entry.";
@@ -104,6 +142,17 @@ export default function HistoryPage() {
         </div>
       )}
 
+      {people && people.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <PeopleFilter people={people} counts={personCounts} value={personIds} onChange={setPersonIds} />
+          {personIds.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => setPersonIds([])}>
+              <X className="size-4" /> Clear
+            </Button>
+          )}
+        </div>
+      )}
+
       {filtering && !isLoading && !isError && filtered.length > 0 && (
         <p className="mb-3 text-sm text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? "log" : "logs"} found
@@ -130,11 +179,48 @@ export default function HistoryPage() {
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
-        {filtered.map((e) => (
-          <EntryCard key={e.id} entry={e} highlight={search} />
-        ))}
-      </div>
+      {/* Keyed by the filters so a new filter starts again from the first chunk. */}
+      <EntryList
+        key={`${selected?.getTime() ?? ""}|${search}|${markerIds.join(",")}|${personIds.join(",")}`}
+        entries={filtered}
+        highlight={search}
+      />
     </main>
+  );
+}
+
+const CHUNK = 40;
+
+/**
+ * Renders the list in chunks: the history is thousands of logs, and mounting a card
+ * (with its edit/delete dialogs) for each one at once is what made the page slow.
+ * More cards mount as the sentinel below the list nears the viewport.
+ */
+function EntryList({ entries, highlight }: { entries: DecryptedEntry[]; highlight: string }) {
+  const [shown, setShown] = useState(CHUNK);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const hasMore = shown < entries.length;
+
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (items) => {
+        if (items.some((i) => i.isIntersecting)) setShown((n) => n + CHUNK);
+      },
+      { rootMargin: "1200px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // `shown` re-arms the observer after each chunk, in case the sentinel is still in range.
+  }, [hasMore, shown]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {entries.slice(0, shown).map((e) => (
+        <EntryCard key={e.id} entry={e} highlight={highlight} />
+      ))}
+      {hasMore && <div ref={sentinel} className="h-px" aria-hidden />}
+    </div>
   );
 }

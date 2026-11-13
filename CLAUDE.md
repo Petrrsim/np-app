@@ -55,11 +55,11 @@ src/
                     alert-dialog, popover, sonner)
     *.tsx           features: app-header, np-logo, auth-gate, entry-form, entry-fields,
                     metric-slider, success-buttons, level-tiles, sleep-picker,
-                    activity-picker, marker-picker, entry-card,
+                    activity-picker, people-picker, marker-picker, entry-card,
                     edit-entry-dialog, delete-entry-button, date-picker
   contexts/         auth-context.tsx (useAuth)
-  hooks/            use-entries.ts (list/create/update/delete incl. activities, latest metrics,
-                    sleep-logged-on)
+  hooks/            use-entries.ts (list/create/update/delete incl. activities, people, markers,
+                    latest metrics, sleep-logged-on; usePeople/useMarkers lists + create)
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
                     activities.ts (activity list), search.ts (History note search + highlight)
   types/            db.ts (shared domain types / DB contract)
@@ -81,20 +81,26 @@ package.json · package-lock.json   dependencies          node_modules/  install
 
 A personal "diary" tool recording mood/energy/flow (sliders, 1–12), success (No −1 / Neutral 0 /
 Yes 1), an optional sleep quality (Poor 1 / Fine 2 / Good 3), optional activities each rated
-by feeling (Rough 1 / OK 2 / Great 3), optional markers (user-defined tags) and an encrypted note. Several logs
+by feeling (Rough 1 / OK 2 / Great 3), optional people each rated by their NP / life energy (Low 1 / OK 2 / Great 3),
+optional markers (user-defined tags) and an encrypted note. Several logs
 per day are normal (e.g. morning + afternoon). **New Entry** (`/`) always logs for today; **History**
-lists logs newest→oldest with per-log edit/delete and three combinable filters: a calendar date,
-a word search over notes, and a marker filter (chips with counts; a log must carry every selected
-marker).
+lists logs newest→oldest with per-log edit/delete and four combinable filters: a calendar date,
+a word search over notes, a marker filter and a person filter (chips with counts; a log must carry every selected
+marker and include every selected person).
 
 History search: client-side over the already-decrypted `comment` (no server query — notes are
 encrypted at rest). Matching is case- and diacritic-insensitive and substring-based ("uz" finds
 "Už"); matches are highlighted with `<mark>` in [entry-card.tsx](src/components/entry-card.tsx)
-via the `highlight` prop. Helpers (`matchesQuery`, `splitMatches`) live in
-[src/lib/search.ts](src/lib/search.ts). Marker chip counts reflect the date + word filters.
+via the `highlight` prop. Helpers (`foldText`, `splitMatches`) live in
+[src/lib/search.ts](src/lib/search.ts). Marker / person chip counts reflect the date + word filters and the other chip filter.
+
+History performance (~5k logs): the page folds all notes once on first search (not per
+keystroke) and renders cards in chunks of 40 as you scroll (`EntryList` in the history page) —
+never mount the whole list at once. The full history is prefetched after login
+(`usePrefetchEntries` in `AuthGate`) and cached for 5 min (`entriesQuery`).
 
 Form fields ([entry-fields.tsx](src/components/entry-fields.tsx), shared by New Entry and the
-History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep → Activities → Markers → Note
+History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep → Activities → People → Markers → Note
 (placeholder "What's up bro?").
 
 New Entry behaviour:
@@ -108,6 +114,11 @@ New Entry behaviour:
   its own Rough/OK/Great tiles. Saving is blocked (toast) until every picked activity is rated.
   The list lives in code: [src/lib/activities.ts](src/lib/activities.ts) (`ACTIVITIES` — add a
   `{ key, label, Icon }` line; never rename a stored `key`; no DB change needed).
+- **People are optional per log, any number** — like activities (pick chips, then rate each
+  person's NP with Low/OK/Great tiles; saving is blocked until all are rated), but the list lives
+  in the DB like markers (`np_people`, via `usePeople`/`useCreatePerson`, "New" chip adds one
+  inline). Stored in `np_entry_people` (merged into `DecryptedEntry.people`); resets to `[]`
+  after saving. Colours reuse the `--feel-*` tokens; battery icons.
 - **Markers are optional per log, any number** — toggle chips ([marker-picker.tsx](src/components/marker-picker.tsx)).
   Unlike activities, the list lives in the DB (`np_markers`, via `useMarkers`/`useCreateMarker`):
   the "New" chip creates one inline and selects it. Entries reference markers by id
@@ -140,8 +151,9 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
    newest row for that date); `useEntries` merges a direct `select id, sleep_quality` in by `id`.
    Activities live in their own table `np_entry_activities` (direct access, same pattern: insert
    after `save-entry`, delete-dropped + upsert on edit, merged into `DecryptedEntry.activities`).
-   Markers work the same way via `np_entry_markers` (merged into `DecryptedEntry.markers`); the
-   marker list itself is `np_markers` under its own query key `MARKERS_KEY`.
+   People (`np_entry_people`, with `np`) and markers work the same way; markers via `np_entry_markers` (merged into `DecryptedEntry.markers`); the
+   marker list itself is `np_markers` under its own query key `MARKERS_KEY`, and the people list is
+   `np_people` under `PEOPLE_KEY`.
 
 ### State
 

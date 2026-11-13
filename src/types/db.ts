@@ -12,6 +12,21 @@ export interface EntryActivity {
   feeling: ActivityFeeling;
 }
 
+/** A person's NP (life energy) on a log: 1 = low, 2 = ok, 3 = great. */
+export type PersonNp = 1 | 2 | 3;
+
+/** A row of `np_people`: someone close to the user who can appear in any number of logs. */
+export interface Person {
+  id: number;
+  name: string;
+}
+
+/** A row of `np_entry_people` (minus entry/user ids). */
+export interface EntryPerson {
+  person_id: number;
+  np: PersonNp;
+}
+
 /** A row of `np_markers`: a user-defined tag that can be attached to any number of logs. */
 export interface Marker {
   id: number;
@@ -47,6 +62,8 @@ export interface DecryptedEntry extends NpEntry {
   comment: string;
   /** Merged in from `np_entry_activities` by entry id; empty when none were logged. */
   activities: EntryActivity[];
+  /** People merged in from `np_entry_people`; empty when none. */
+  people: EntryPerson[];
   /** Marker ids merged in from `np_entry_markers`; empty when none. */
   markers: number[];
 }
@@ -61,6 +78,8 @@ export interface SaveEntryPayload {
   sleep: SleepQuality | null;
   /** Not sent to save-entry — inserted into np_entry_activities after the insert. */
   activities: EntryActivity[];
+  /** Not sent to save-entry — inserted into np_entry_people after the insert. */
+  people: EntryPerson[];
   /** Not sent to save-entry — marker ids inserted into np_entry_markers after the insert. */
   markers: number[];
   /** formatted yyyy-MM-dd */
@@ -76,6 +95,8 @@ export interface UpdateEntryPayload {
   sleep: SleepQuality | null;
   /** Replaces the entry's activities (direct table writes). */
   activities: EntryActivity[];
+  /** Replaces the entry's people (direct table writes). */
+  people: EntryPerson[];
   /** Replaces the entry's marker ids (direct table writes). */
   markers: number[];
   note: string;
