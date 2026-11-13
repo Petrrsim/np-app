@@ -1,26 +1,101 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-sleep-poor: var(--sleep-poor);
+  --color-sleep-fine: var(--sleep-fine);
+  --color-sleep-good: var(--sleep-good);
+  --color-feel-rough: var(--feel-rough);
+  --color-feel-ok: var(--feel-ok);
+  --color-feel-great: var(--feel-great);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: dark;
+
+  --background: #0a0a0b;
+  --foreground: #ededee;
+
+  --card: #161618;
+  --card-foreground: #fafafa;
+
+  --muted: #232327;
+  --muted-foreground: #a1a1aa;
+
+  --border: #2a2a2e;
+  --input: #2a2a2e;
+  --ring: #52525b;
+
+  --primary: #fafafa;
+  --primary-foreground: #0a0a0b;
+
+  --accent: #232327;
+  --accent-foreground: #fafafa;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+
+  --success: #22c55e;
+  --success-foreground: #052e16;
+
+  /* sleep quality scale: warm (restless) → cool night-blue (rested) */
+  --sleep-poor: #fb7185;
+  --sleep-fine: #fbbf24;
+  --sleep-good: #818cf8;
+  /* activity feeling scale: rose (rough) → amber (ok) → teal (great) */
+  --feel-rough: #fb7185;
+  --feel-ok: #fbbf24;
+  --feel-great: #2dd4bf;
+
+  --radius: 0.75rem;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  border-color: var(--border);
+}
+
+/* react-day-picker (dark) */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--accent);
+  --rdp-today-color: var(--success);
+  --rdp-selected-border: 2px solid var(--primary);
+  color: var(--card-foreground);
+  margin: 0;
+}
+.rdp-day_button:hover {
+  background-color: var(--accent);
+}
+.rdp-selected .rdp-day_button {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
 }
