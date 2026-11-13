@@ -45,6 +45,8 @@ Everything below is standard Next.js infrastructure — there are no leftovers f
 src/
   app/
     layout.tsx · providers.tsx · globals.css   root shell (html.dark, QueryClient + AuthProvider, Toaster, theme)
+    icon.png · apple-icon.png                  tab favicon (192px) + iOS home-screen icon (180px), resized
+                                               from media/np_logo.png (file-convention icons, no <link> code)
     login/page.tsx                             bare login screen (signInWithPassword)
     (protected)/                               route group behind <AuthGate> + <AppHeader>
       layout.tsx · page.tsx (New Entry, "/") · history/page.tsx
@@ -61,7 +63,7 @@ src/
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
                     activities.ts (activity list)
   types/            db.ts (shared domain types / DB contract)
-media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx)
+media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx; source for the icons)
 .env              Supabase connection (gitignored)        .env.example  template
 CLAUDE.md         this file       AGENTS.md  Next.js 16 agent rules (imported above)
 SUPABASE.md       preserved backend contract              README.md     project readme
@@ -72,6 +74,8 @@ package.json · package-lock.json   dependencies          node_modules/  install
 
 `.next/` (build cache, gitignored) regenerates on `npm run dev`/`build` and is safe to delete.
 `public/` (static assets) is intentionally absent — recreate it only when you add static files.
+`import-comments.mjs` / `probe-decrypt.mjs` are local one-off Supabase scripts, gitignored on purpose
+(they hardcode the login email) — keep them out of the repo.
 
 ## Architecture
 
@@ -149,3 +153,13 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
 
 [.env](.env) must define `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` —
 [src/lib/supabase.ts](src/lib/supabase.ts) throws at import time if either is missing.
+
+## Deployment
+
+- **GitHub:** private repo `Petrrsim/np-app`, branch `main`.
+- **Vercel:** Git-connected project; **every push to `main` deploys to production** (no manual step).
+  The two `NEXT_PUBLIC_SUPABASE_*` vars are set in Vercel → Settings → Environment Variables; they're
+  inlined at build time, so changing them requires a redeploy.
+- **Domain:** https://np.pt-solutions.tech — DNS `CNAME np → cname.vercel-dns.com`. The app runs at the
+  domain root (no `basePath`); Supabase Auth's Site URL points there.
+- Run `npm run build` before pushing — a failed Vercel build leaves the previous deployment live.
