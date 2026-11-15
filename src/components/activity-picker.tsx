@@ -2,9 +2,11 @@
 
 import { Frown, Laugh, Meh, X } from "lucide-react";
 import type { ActivityFeeling, EntryActivity } from "@/types/db";
-import { ACTIVITIES, activityInfo } from "@/lib/activities";
+import type { ActivityLookup } from "@/lib/activities";
+import { useActivities, useActivityLookup } from "@/hooks/use-lists";
 import { cn } from "@/lib/utils";
 import { LevelTiles, type LevelOption } from "@/components/level-tiles";
+import { EmptyHint } from "@/components/marker-picker";
 
 export const FEELING_OPTIONS: Record<ActivityFeeling, LevelOption> = {
   1: {
@@ -50,9 +52,9 @@ export interface ActivityDraft {
 }
 
 /** Label of the first picked-but-unrated activity, or null when all are rated. */
-export function firstUnrated(drafts: ActivityDraft[]): string | null {
+export function firstUnrated(drafts: ActivityDraft[], lookup: ActivityLookup): string | null {
   const d = drafts.find((a) => a.feeling === null);
-  return d ? activityInfo(d.activity).label : null;
+  return d ? lookup(d.activity).label : null;
 }
 
 /** Drops unrated drafts — callers validate with `firstUnrated` first. */
@@ -71,12 +73,13 @@ export function ActivityPicker({
   value: ActivityDraft[];
   onChange: (value: ActivityDraft[]) => void;
 }) {
+  const { data: list } = useActivities();
+  const activityInfo = useActivityLookup();
   const feelingOf = new Map(value.map((a) => [a.activity, a.feeling]));
-  // Show list activities plus any stored key that has since been removed from the list.
-  const keys = [
-    ...ACTIVITIES.map((a) => a.key as string),
-    ...value.map((a) => a.activity).filter((k) => !ACTIVITIES.some((a) => a.key === k)),
-  ];
+  // Visible activities in list order, plus anything already picked that's hidden or no
+  // longer in the list (e.g. editing an old log) so it can still be seen and removed.
+  const shown = (list ?? []).filter((a) => !a.hidden || feelingOf.has(a.key)).map((a) => a.key);
+  const keys = [...shown, ...value.map((a) => a.activity).filter((k) => !shown.includes(k))];
 
   function toggle(key: string) {
     onChange(
@@ -92,26 +95,8 @@ export function ActivityPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex min-h-6 items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          Activities
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Optional
-          </span>
-        </span>
-        {value.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <X className="size-3" />
-            Clear
-          </button>
-        )}
-      </div>
-
       <div className="flex flex-wrap gap-2">
+        {list && keys.length === 0 && <EmptyHint noun="activities" />}
         {keys.map((key) => {
           const { label, Icon } = activityInfo(key);
           const on = feelingOf.has(key);
@@ -184,7 +169,7 @@ export function ActivityPicker({
 }
 
 export function ActivityBadge({ value }: { value: EntryActivity }) {
-  const { label, Icon } = activityInfo(value.activity);
+  const { label, Icon } = useActivityLookup()(value.activity);
   const o = FEELING_OPTIONS[value.feeling];
   return (
     <span

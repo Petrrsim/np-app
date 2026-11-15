@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { BatteryFull, BatteryLow, BatteryMedium, Check, Loader2, Plus, User, X } from "lucide-react";
-import { toast } from "sonner";
+import { BatteryFull, BatteryLow, BatteryMedium, Loader2, User, X } from "lucide-react";
 import type { EntryPerson, Person, PersonNp } from "@/types/db";
 import { cn } from "@/lib/utils";
 import { LevelTiles, type LevelOption } from "@/components/level-tiles";
-import { useCreatePerson, usePeople } from "@/hooks/use-entries";
+import { usePeople } from "@/hooks/use-entries";
+import { EmptyHint } from "@/components/marker-picker";
 
 /** A person's NP (life energy). Reuses the feeling scale colours: rose → amber → teal. */
 export const NP_OPTIONS: Record<PersonNp, LevelOption> = {
@@ -68,7 +67,7 @@ export function toEntryPeople(drafts: PersonDraft[]): EntryPerson[] {
 }
 
 /**
- * Optional people: toggle any number of the user's people (or add someone new inline),
+ * Optional people: toggle any number of the user's people (the list is managed in Settings),
  * then rate each picked person's NP (life energy, 1–3). Picked people keep their pick order.
  */
 export function PeoplePicker({
@@ -79,9 +78,6 @@ export function PeoplePicker({
   onChange: (value: PersonDraft[]) => void;
 }) {
   const { data: people, isPending } = usePeople();
-  const create = useCreatePerson();
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
   const npOf = new Map(value.map((p) => [p.person_id, p.np]));
   const nameOf = (id: number) => people?.find((p) => p.id === id)?.name ?? "…";
 
@@ -93,54 +89,12 @@ export function PeoplePicker({
     onChange(value.map((p) => (p.person_id === id ? { ...p, np } : p)));
   }
 
-  function closeAdd() {
-    setAdding(false);
-    setName("");
-  }
-
-  async function handleAdd() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const existing = people?.find((p) => p.name.toLowerCase() === trimmed.toLowerCase());
-    if (existing) {
-      // Typing an existing name just picks them.
-      if (!npOf.has(existing.id)) onChange([...value, { person_id: existing.id, np: null }]);
-      closeAdd();
-      return;
-    }
-    try {
-      const person = await create.mutateAsync(trimmed);
-      onChange([...value, { person_id: person.id, np: null }]);
-      closeAdd();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add person");
-    }
-  }
-
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex min-h-6 items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          People
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Optional
-          </span>
-        </span>
-        {value.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <X className="size-3" />
-            Clear
-          </button>
-        )}
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
         {isPending && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-        {people?.map((p) => {
+        {people && !people.some((p) => !p.hidden || npOf.has(p.id)) && <EmptyHint noun="people" />}
+        {people?.filter((p) => !p.hidden || npOf.has(p.id)).map((p) => {
           const on = npOf.has(p.id);
           const np = npOf.get(p.id) ?? null;
           const o = np ? NP_OPTIONS[np] : null;
@@ -162,48 +116,6 @@ export function PeoplePicker({
             </button>
           );
         })}
-
-        {adding ? (
-          <form
-            className="flex items-center gap-1 rounded-full border border-ring/40 bg-card py-0.5 pl-3 pr-0.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void handleAdd();
-            }}
-          >
-            <input
-              autoFocus
-              value={name}
-              maxLength={40}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && closeAdd()}
-              placeholder="Name"
-              aria-label="New person's name"
-              className="w-28 bg-transparent text-xs outline-none placeholder:text-muted-foreground/80"
-            />
-            <button
-              type="submit"
-              disabled={!name.trim() || create.isPending}
-              aria-label="Add person"
-              className="rounded-full p-1 text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-            >
-              {create.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-            </button>
-            <button
-              type="button"
-              onClick={closeAdd}
-              aria-label="Cancel"
-              className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <X className="size-3.5" />
-            </button>
-          </form>
-        ) : (
-          <button type="button" onClick={() => setAdding(true)} className={cn(CHIP, "border-dashed")}>
-            <Plus className="size-3.5" />
-            New
-          </button>
-        )}
       </div>
 
       {value.map(({ person_id, np }) => {

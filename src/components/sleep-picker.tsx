@@ -53,34 +53,30 @@ export function SleepPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex min-h-6 items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          Sleep
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Optional
-          </span>
-        </span>
-        {value !== null ? (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <X className="size-3" />
-            Clear
-          </button>
-        ) : (
-          logged && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              Logged today
-              <span className={cn("inline-flex items-center gap-1 font-medium", logged.text)}>
-                <logged.Icon className="size-3.5" />
-                {logged.label}
+      {(value !== null || logged) && (
+        <div className="flex min-h-6 items-center justify-end gap-2">
+          {value !== null ? (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-3" />
+              Clear
+            </button>
+          ) : (
+            logged && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                Logged today
+                <span className={cn("inline-flex items-center gap-1 font-medium", logged.text)}>
+                  <logged.Icon className="size-3.5" />
+                  {logged.label}
+                </span>
               </span>
-            </span>
-          )
-        )}
-      </div>
+            )
+          )}
+        </div>
+      )}
 
       <LevelTiles
         options={SLEEP_OPTIONS}

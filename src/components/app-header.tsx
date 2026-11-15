@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { Settings } from "lucide-react";
 import { NpLogo } from "@/components/np-logo";
-import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -16,7 +15,6 @@ const links = [
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { signOut } = useAuth();
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-card/75 backdrop-blur-md">
@@ -40,8 +38,16 @@ export function AppHeader() {
             ))}
           </nav>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => signOut()} aria-label="Sign out">
-          <LogOut className="size-4" />
+        {/* Sign out lives on the Settings page (Account). */}
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className={cn(pathname === "/settings" && "bg-muted text-foreground")}
+        >
+          <Link href="/settings" aria-label="Settings" aria-current={pathname === "/settings" ? "page" : undefined}>
+            <Settings className="size-4" />
+          </Link>
         </Button>
       </div>
     </header>

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EntryFields, type EntryFieldsValue } from "@/components/entry-fields";
 import { firstUnrated, toEntryActivities } from "@/components/activity-picker";
+import { useActivityLookup } from "@/hooks/use-lists";
 import { firstUnratedPerson, toEntryPeople } from "@/components/people-picker";
 import { usePeople, useUpdateEntry } from "@/hooks/use-entries";
 
@@ -38,6 +39,7 @@ export function EditEntryDialog({ entry }: { entry: DecryptedEntry }) {
   const [fields, setFields] = useState<EntryFieldsValue>(() => toFields(entry));
   const update = useUpdateEntry();
   const { data: people } = usePeople();
+  const activityInfo = useActivityLookup();
 
   function handleOpenChange(next: boolean) {
     if (next) setFields(toFields(entry));
@@ -45,7 +47,7 @@ export function EditEntryDialog({ entry }: { entry: DecryptedEntry }) {
   }
 
   async function handleSave() {
-    const unrated = firstUnrated(fields.activities);
+    const unrated = firstUnrated(fields.activities, activityInfo);
     if (unrated) {
       toast.error(`Rate how ${unrated} felt`);
       return;

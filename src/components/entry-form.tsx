@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntryFields, ENTRY_DEFAULTS, type EntryFieldsValue } from "@/components/entry-fields";
 import { firstUnrated, toEntryActivities } from "@/components/activity-picker";
+import { useActivityLookup } from "@/hooks/use-lists";
 import { firstUnratedPerson, toEntryPeople } from "@/components/people-picker";
 import {
   useCreateEntry,
@@ -49,12 +50,15 @@ export function EntryForm() {
 
 function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; todayKey: string }) {
   const [fields, setFields] = useState<EntryFieldsValue>(initial);
+  // Bumped after each save so the optional sections (Activities, People, Markers) fold back up.
+  const [formKey, setFormKey] = useState(0);
   const create = useCreateEntry();
   const { data: sleepLoggedToday } = useSleepLoggedOn(todayKey);
   const { data: people } = usePeople();
+  const activityInfo = useActivityLookup();
 
   async function handleSave() {
-    const unrated = firstUnrated(fields.activities);
+    const unrated = firstUnrated(fields.activities, activityInfo);
     if (unrated) {
       toast.error(`Rate how ${unrated} felt`);
       return;
@@ -75,6 +79,7 @@ function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; today
       // The log just saved is now the "previous log", so keep its slider values.
       const { mood, energy, flow } = fields;
       setFields(freshFields({ mood, energy, flow }));
+      setFormKey((k) => k + 1);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save entry");
     }
@@ -83,6 +88,7 @@ function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; today
   return (
     <>
       <EntryFields
+        key={formKey}
         value={fields}
         onChange={(patch) => setFields((f) => ({ ...f, ...patch }))}
         sleepLoggedToday={sleepLoggedToday}

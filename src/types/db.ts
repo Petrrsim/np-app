@@ -6,7 +6,23 @@ export type SleepQuality = 1 | 2 | 3;
 /** How an activity felt: 1 = rough, 2 = ok, 3 = great. */
 export type ActivityFeeling = 1 | 2 | 3;
 
-/** A row of `np_entry_activities` (minus ids). `activity` is a key from src/lib/activities.ts. */
+/**
+ * A row of `np_activities`: an activity the user can attach to logs. `key` is what
+ * `np_entry_activities.activity` stores and never changes; `label`/`icon` are editable in
+ * Settings. `icon` is a name from `ACTIVITY_ICONS` (src/lib/activities.ts).
+ */
+export interface ActivityType {
+  id: number;
+  key: string;
+  label: string;
+  icon: string;
+  /** Hidden = kept on past logs but not offered in the New Entry / Edit form. */
+  hidden: boolean;
+  /** Manual order (Settings ↑/↓); null = not placed yet, sorts last. */
+  position: number | null;
+}
+
+/** A row of `np_entry_activities` (minus ids). `activity` is an `ActivityType.key`. */
 export interface EntryActivity {
   activity: string;
   feeling: ActivityFeeling;
@@ -19,6 +35,10 @@ export type PersonNp = 1 | 2 | 3;
 export interface Person {
   id: number;
   name: string;
+  /** Hidden = kept on past logs but not offered in the New Entry / Edit form. */
+  hidden: boolean;
+  /** Manual order (Settings ↑/↓); null = not placed yet, sorts last. */
+  position: number | null;
 }
 
 /** A row of `np_entry_people` (minus entry/user ids). */
@@ -31,6 +51,10 @@ export interface EntryPerson {
 export interface Marker {
   id: number;
   name: string;
+  /** Hidden = kept on past logs but not offered in the New Entry / Edit form. */
+  hidden: boolean;
+  /** Manual order (Settings ↑/↓); null = not placed yet, sorts last. */
+  position: number | null;
 }
 
 export interface NpProfile {

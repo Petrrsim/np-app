@@ -49,13 +49,35 @@ function, which returns `comment` as a decrypted `string`.
 | `id`         | bigint identity                        | PK |
 | `entry_id`   | bigint → `np_entries.id`               | `on delete cascade` |
 | `user_id`    | uuid → `auth.users.id`                 | defaults to `auth.uid()`; RLS scopes rows to the user |
-| `activity`   | text (check `^[a-z][a-z0-9_]*$`)       | key from [src/lib/activities.ts](src/lib/activities.ts) |
+| `activity`   | text (check `^[a-z][a-z0-9_]*$`)       | `np_activities.key` (no FK — linked by key) |
 | `feeling`    | smallint (check 1–3)                   | 1 rough · 2 ok · 3 great |
 | `created_at` | timestamptz                            | |
 
 `unique (entry_id, activity)` — each activity at most once per log. RLS: select/update/delete
 own rows; insert also requires the target entry to belong to the user. Accessed only by direct
 table queries (non-sensitive) — the edge functions don't know about it.
+
+### `np_activities` — the user's activity list (added 2026-11-15)
+
+| column       | type                                   | notes |
+| ------------ | -------------------------------------- | ----- |
+| `id`         | bigint identity                        | PK; display order = creation order |
+| `user_id`    | uuid → `auth.users.id`                 | defaults to `auth.uid()`; RLS scopes rows to the user |
+| `key`        | text (check `^[a-z][a-z0-9_]*$`, ≤ 40) | what `np_entry_activities.activity` stores; unique per user; never changes |
+| `label`      | text (1–40 chars, trimmed)             | display name; unique per user case-insensitively; editable |
+| `icon`       | text (`^[a-z0-9-]{1,40}$`)             | name from `ACTIVITY_ICONS` in src/lib/activities.ts |
+| `hidden`     | boolean, default false                 | hidden = kept on past logs, not offered in the form |
+| `created_at` | timestamptz                            | |
+
+Seeded with the previously hard-coded strength, run, swim, drums, dance. Managed on the Settings
+page. RLS: select/insert/update/delete own rows. Migration:
+[supabase/migrations/20261115_np_activities_and_hidden_flags.sql](supabase/migrations/20261115_np_activities_and_hidden_flags.sql)
+(which also adds `hidden boolean not null default false` to `np_markers` and `np_people`).
+
+All three lists (`np_activities`, `np_markers`, `np_people`) also have `position integer`
+(nullable) for the manual order set in Settings; reads order by `position` nulls last, then `id`.
+Existing rows were numbered in creation order; new rows start null. Migration:
+[supabase/migrations/20261115_list_positions.sql](supabase/migrations/20261115_list_positions.sql).
 
 ### `np_markers` — user-defined markers (added 2026-11-13)
 
@@ -67,7 +89,7 @@ table queries (non-sensitive) — the edge functions don't know about it.
 | `created_at` | timestamptz                  | |
 
 Seeded with: synchronicity, injury, sickness, X, positive, negative. New markers are created
-from the New Entry / Edit form. RLS: select/insert/update/delete own rows.
+from Settings, which also renames, hides (`hidden`) and deletes them. RLS: select/insert/update/delete own rows.
 
 ### `np_entry_markers` — markers attached to a log (added 2026-11-13)
 
@@ -84,7 +106,7 @@ marker to belong to the user. Direct table access only, same pattern as activiti
 ### `np_people` — people close to the user (added 2026-11-13)
 
 Same shape and RLS as `np_markers` (`id` identity, `user_id`, `name` 1–40 chars trimmed and
-unique per user case-insensitively, `created_at`). Created inline from the New Entry / Edit form.
+unique per user case-insensitively, `created_at`). Managed on the Settings page.
 
 ### `np_entry_people` — people in a log, with their NP (added 2026-11-13)
 
@@ -143,5 +165,5 @@ Invoked via `supabase.functions.invoke(name, { body })`:
 
 1. All entry **reads/writes** go through the edge functions above — never read
    `np_entries.comment` or write `comment_encrypted` directly.
-2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_entry_activities`, `np_markers`, `np_entry_markers`, `np_people`, `np_entry_people`, entry deletion) may use direct table access.
+2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_activities`, `np_entry_activities`, `np_markers`, `np_entry_markers`, `np_people`, `np_entry_people`, entry deletion) may use direct table access.
 3. Keep `entry_date` formatted as `yyyy-MM-dd`.

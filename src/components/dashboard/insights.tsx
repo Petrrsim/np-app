@@ -8,7 +8,7 @@ import { LevelBars, type Level } from "@/components/level-tiles";
 import { FEELING_OPTIONS } from "@/components/activity-picker";
 import { NP_OPTIONS } from "@/components/people-picker";
 import { SLEEP_OPTIONS } from "@/components/sleep-picker";
-import { activityInfo } from "@/lib/activities";
+import { useActivityLookup } from "@/hooks/use-lists";
 import { cn } from "@/lib/utils";
 import {
   METRICS,
@@ -379,6 +379,7 @@ export function Insights({
   people: Person[] | undefined;
   markers: Marker[] | undefined;
 }) {
+  const activityInfo = useActivityLookup();
   const daily = useMemo(() => dailyMood(points), [points]);
   const activities = useMemo(() => activityStats(entries, daily), [entries, daily]);
   const peopleRows = useMemo(() => peopleStats(entries, daily), [entries, daily]);

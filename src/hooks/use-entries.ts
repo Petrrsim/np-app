@@ -16,6 +16,7 @@ import type {
 export const ENTRIES_KEY = ["entries"] as const;
 export const MARKERS_KEY = ["markers"] as const;
 export const PEOPLE_KEY = ["people"] as const;
+export const ACTIVITIES_KEY = ["activities"] as const;
 
 // decrypt-entries returns at most 1000 rows per call (20 if no limit is sent).
 const PAGE_SIZE = 1000;
@@ -416,12 +417,16 @@ export function useDeleteEntry() {
   });
 }
 
-/** The user's marker list, in creation order. */
+/** The user's marker list, in their manual order (then creation order). */
 export function useMarkers() {
   return useQuery({
     queryKey: MARKERS_KEY,
     queryFn: async (): Promise<Marker[]> => {
-      const { data, error } = await supabase.from("np_markers").select("id, name").order("id");
+      const { data, error } = await supabase
+        .from("np_markers")
+        .select("id, name, hidden, position")
+        .order("position", { nullsFirst: false })
+        .order("id");
       if (error) throw error;
       return data ?? [];
     },
@@ -435,7 +440,7 @@ export function useCreateMarker() {
       const { data, error } = await supabase
         .from("np_markers")
         .insert({ name: name.trim() })
-        .select("id, name")
+        .select("id, name, hidden, position")
         .single();
       if (error) {
         // Unique (user_id, lower(name)) violation.
@@ -448,12 +453,16 @@ export function useCreateMarker() {
   });
 }
 
-/** The user's people list, in creation order. */
+/** The user's people list, in their manual order (then creation order). */
 export function usePeople() {
   return useQuery({
     queryKey: PEOPLE_KEY,
     queryFn: async (): Promise<Person[]> => {
-      const { data, error } = await supabase.from("np_people").select("id, name").order("id");
+      const { data, error } = await supabase
+        .from("np_people")
+        .select("id, name, hidden, position")
+        .order("position", { nullsFirst: false })
+        .order("id");
       if (error) throw error;
       return data ?? [];
     },
@@ -467,7 +476,7 @@ export function useCreatePerson() {
       const { data, error } = await supabase
         .from("np_people")
         .insert({ name: name.trim() })
-        .select("id, name")
+        .select("id, name, hidden, position")
         .single();
       if (error) {
         // Unique (user_id, lower(name)) violation.

@@ -3,7 +3,7 @@
 A personal daily diary that records mood, energy, flow, and a success step plus an
 encrypted note, backed by Supabase.
 
-Three screens behind a one-time login:
+Four screens behind a one-time login:
 
 - **New Entry** (`/`) — log today's mood / energy / flow, success, sleep, activities, people,
   markers and a note.
@@ -12,6 +12,8 @@ Three screens behind a one-time login:
 - **Dashboard** (`/dashboard`) — averages vs. the previous period, a scrollable interactive chart
   of mood / energy / flow (success markers, moving-average trend lines, click a point for the log)
   and insights (weekday rhythm, wins vs. misses, activities, people, sleep, markers).
+- **Settings** (`/settings`, gear icon) — manage the activity, people and marker lists (add,
+  reorder, rename, icons, hide, delete), export all logs as CSV / JSON, change password, sign out.
 
 Rebuilt from scratch on a **Next.js 16 (App Router) + React 19 + TypeScript + Tailwind v4 +
 Supabase + TanStack Query** stack. The Supabase backend (tables + edge functions) was
@@ -46,6 +48,9 @@ carried over from the previous version — see [SUPABASE.md](SUPABASE.md) for th
 - `src/lib/edge.ts` — wrappers for the encrypted-entry edge functions.
 - `src/lib/stats.ts` — pure Dashboard computations (averages, moving averages, insights).
 - `src/components/dashboard/` — Dashboard tiles, chart and insight cards.
+- `src/components/settings/` — Settings cards (list manager, data export, account).
+- `src/hooks/` — TanStack Query hooks for entries and the user-managed lists.
+- `supabase/migrations/` — SQL for schema changes made since the rebuild.
 - `src/types/db.ts` — shared domain types / DB contract.
 
 See [CLAUDE.md](CLAUDE.md) for architecture and conventions.

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Status:** Rebuilt from scratch on 2026-06-03 (Next.js). The previous Vite SPA was deleted; the
 > Supabase backend (data + edge functions) was preserved and is documented in
-> [SUPABASE.md](SUPABASE.md). Single-user personal diary — three screens (New Entry, History, Dashboard) + login.
+> [SUPABASE.md](SUPABASE.md). Single-user personal diary — four screens (New Entry, History, Dashboard, Settings) + login.
 
 ## Skills
 
@@ -49,7 +49,8 @@ src/
                                                from media/np_logo.png (file-convention icons, no <link> code)
     login/page.tsx                             bare login screen (signInWithPassword)
     (protected)/                               route group behind <AuthGate> + <AppHeader>
-      layout.tsx · page.tsx (New Entry, "/") · history/page.tsx · dashboard/page.tsx
+      layout.tsx · page.tsx (New Entry, "/") · history/page.tsx · dashboard/page.tsx ·
+      settings/page.tsx
   components/
     ui/             shadcn-style primitives (button, card, input, textarea, slider, dialog,
                     alert-dialog, popover, sonner)
@@ -59,17 +60,23 @@ src/
                     edit-entry-dialog, delete-entry-button, date-picker
     dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
                     stat-tiles (Mood/Energy/Flow tiles) · insights (weekday / success / tag / sleep cards)
+    settings/       list-manager (add/rename/icon/hide/delete for one list) · data-card (CSV/JSON
+                    export) · account-card (email, change password, sign out)
   contexts/         auth-context.tsx (useAuth)
   hooks/            use-entries.ts (list/create/update/delete incl. activities, people, markers,
                     latest metrics, sleep-logged-on; usePeople/useMarkers lists + create)
+                    use-lists.ts (useActivities/useActivityLookup/useCreateActivity; generic
+                    useUpdateListItem/useDeleteListItem/useReorderList for all three lists)
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
-                    activities.ts (activity list), search.ts (History note search + highlight),
-                    stats.ts (pure Dashboard computations)
+                    activities.ts (activity icon registry, key slugs, lookup), search.ts (History
+                    note search + highlight), stats.ts (pure Dashboard computations),
+                    export.ts (CSV/JSON backup)
   types/            db.ts (shared domain types / DB contract)
 media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx; source for the icons)
 .env              Supabase connection (gitignored)        .env.example  template
 CLAUDE.md         this file       AGENTS.md  Next.js 16 agent rules (imported above)
 SUPABASE.md       preserved backend contract              README.md     project readme
+supabase/migrations/   SQL for schema changes made after the rebuild (record; applied via Supabase)
 next.config.ts · tsconfig.json · next-env.d.ts · eslint.config.mjs · postcss.config.mjs   tooling config
 package.json · package-lock.json   dependencies          node_modules/  installed deps (gitignored)
 .gitignore · .git/   version control                     .claude/       senior-fullstack skill
@@ -123,8 +130,17 @@ the `--chart-mood/energy/flow` tokens — a CVD-validated set; don't swap in oth
 CSS cache a missing token makes SVG strokes vanish (dots still show, lines don't).
 
 Form fields ([entry-fields.tsx](src/components/entry-fields.tsx), shared by New Entry and the
-History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep → Activities → People → Markers → Note
-(placeholder "What's up bro?").
+History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep / Activities / People /
+Markers button row → Note (placeholder "What's up bro?").
+
+Sleep, Activities, People and Markers sit behind one row of four toggle buttons (`ExtrasBar` in
+entry-fields.tsx, icon over label) right above the Note: tapping one opens that picker under the
+row (one at a time, tap again to close). Buttons show the picked count (amber while a pick still
+needs a rating); Sleep shows the logged level's icon + a colour dot instead. Inside the panel the
+pickers have no title; Activities / People / Markers have no Clear (deselect by tapping chips)
+and no inline "New" chip — lists are managed only in Settings (an empty picker links there).
+No "Optional" pills anywhere. New Entry remounts `EntryFields` after a save (`formKey`) so the
+open picker closes.
 
 New Entry behaviour:
 - **Sliders carry over** from the most recent log (any day) via `useLatestMetrics`; the form shows a
@@ -135,17 +151,31 @@ New Entry behaviour:
   (`useSleepLoggedOn`) but doesn't copy the value.
 - **Activities are optional per log, any number** — toggle chips, then each picked activity gets
   its own Rough/OK/Great tiles. Saving is blocked (toast) until every picked activity is rated.
-  The list lives in code: [src/lib/activities.ts](src/lib/activities.ts) (`ACTIVITIES` — add a
-  `{ key, label, Icon }` line; never rename a stored `key`; no DB change needed).
+  The list lives in the DB (`np_activities`, managed on Settings): logs store the activity's
+  `key` (slugged from the label on creation, never changes), so renaming / re-iconing is safe.
+  Icons are names from `ACTIVITY_ICONS` in [src/lib/activities.ts](src/lib/activities.ts); render
+  labels/icons via `useActivityLookup()` (unknown keys fall back to the key + a generic icon).
 - **People are optional per log, any number** — like activities (pick chips, then rate each
   person's NP with Low/OK/Great tiles; saving is blocked until all are rated), but the list lives
-  in the DB like markers (`np_people`, via `usePeople`/`useCreatePerson`, "New" chip adds one
-  inline). Stored in `np_entry_people` (merged into `DecryptedEntry.people`); resets to `[]`
-  after saving. Colours reuse the `--feel-*` tokens; battery icons.
+  in the DB like markers (`np_people`, via `usePeople`; added in Settings). Stored in
+  `np_entry_people` (merged into `DecryptedEntry.people`); resets to `[]` after saving. Colours reuse the `--feel-*` tokens; battery icons.
 - **Markers are optional per log, any number** — toggle chips ([marker-picker.tsx](src/components/marker-picker.tsx)).
-  Unlike activities, the list lives in the DB (`np_markers`, via `useMarkers`/`useCreateMarker`):
-  the "New" chip creates one inline and selects it. Entries reference markers by id
-  (`DecryptedEntry.markers: number[]`, from `np_entry_markers`). Markers reset to `[]` after saving.
+  The list lives in the DB (`np_markers`, via `useMarkers`; added in Settings). Entries reference
+  markers by id (`DecryptedEntry.markers: number[]`, from `np_entry_markers`). Markers reset to `[]` after saving.
+
+Settings (`/settings`, gear icon in the header — sign out lives here now): one card each for
+Activities, People and Markers (add, ↑/↓ reorder, rename, change icon for activities, hide/show,
+delete) plus Data (CSV/JSON export of the full decrypted history) and Account (change password, sign out).
+**Hidden** (`hidden` column on all three tables) = stays on past logs, History filters and the
+Dashboard, but isn't offered in the New Entry / Edit pickers — unless already on the log being
+edited. **Delete** is permanent and removes the item from every log (people/markers cascade;
+activities have no FK, so `useDeleteListItem` deletes their `np_entry_activities` rows first);
+the confirm dialog shows the usage count and offers "Hide instead". Usage counts come from the
+cached `useEntries` history.
+**Order**: all three lists sort by `position` (nulls last), then `id` — the pickers, History
+filters and Settings all follow it. `useReorderList` writes only the rows whose position changed
+and reorders the cache optimistically; new items start with `position` null (= end of the list).
+In Settings, hidden items sit below the visible ones and only move within their group.
 
 UI style: success, sleep and activity feeling are 3-tile pickers sharing one look — lucide icon,
 tinted gradient + glow when selected, and a 3-segment bar (sleep/feeling = level meter, success =
@@ -175,8 +205,8 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
    Activities live in their own table `np_entry_activities` (direct access, same pattern: insert
    after `save-entry`, delete-dropped + upsert on edit, merged into `DecryptedEntry.activities`).
    People (`np_entry_people`, with `np`) and markers work the same way; markers via `np_entry_markers` (merged into `DecryptedEntry.markers`); the
-   marker list itself is `np_markers` under its own query key `MARKERS_KEY`, and the people list is
-   `np_people` under `PEOPLE_KEY`.
+   marker list itself is `np_markers` under its own query key `MARKERS_KEY`, the people list is
+   `np_people` under `PEOPLE_KEY`, and the activity list is `np_activities` under `ACTIVITIES_KEY`.
 
 ### State
 
