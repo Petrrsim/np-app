@@ -1,9 +1,9 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DecryptedEntry } from "@/types/db";
 import { format } from "date-fns";
-import { Search, X } from "lucide-react";
+import { ChevronDown, Search, Tag, User, X, type LucideIcon } from "lucide-react";
 import { useEntries, useMarkers, usePeople } from "@/hooks/use-entries";
 import { EntryCard } from "@/components/entry-card";
 import { DatePicker } from "@/components/date-picker";
@@ -12,6 +12,7 @@ import { PeopleFilter } from "@/components/people-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { foldText } from "@/lib/search";
+import { cn } from "@/lib/utils";
 
 export default function HistoryPage() {
   const { data: entries, isLoading, isError, error } = useEntries();
@@ -22,6 +23,10 @@ export default function HistoryPage() {
   const { data: people } = usePeople();
   const [personIds, setPersonIds] = useState<number[]>([]);
   const search = useDeferredValue(query.trim());
+  // Marker / People chips stay collapsed behind a toggle badge; one panel open at a time.
+  const [openFilter, setOpenFilter] = useState<FilterKind | null>(null);
+  const toggleFilter = (kind: FilterKind) => setOpenFilter((o) => (o === kind ? null : kind));
+  const panelId = useId();
 
   // Date + word filter first; each chip filter's counts are then taken after the *other*
   // chip filter, so they show how many logs that chip would leave.
@@ -126,29 +131,40 @@ export default function HistoryPage() {
         )}
       </div>
 
-      {markers && markers.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <MarkerFilter
-            markers={markers}
-            counts={markerCounts}
-            value={markerIds}
-            onChange={setMarkerIds}
-          />
-          {markerIds.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setMarkerIds([])}>
-              <X className="size-4" /> Clear
-            </Button>
-          )}
-        </div>
-      )}
+      {((markers && markers.length > 0) || (people && people.length > 0)) && (
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {markers && markers.length > 0 && (
+              <FilterToggle
+                label="Markers"
+                Icon={Tag}
+                picked={markerIds.length}
+                open={openFilter === "markers"}
+                panelId={panelId}
+                onClick={() => toggleFilter("markers")}
+              />
+            )}
+            {people && people.length > 0 && (
+              <FilterToggle
+                label="People"
+                Icon={User}
+                picked={personIds.length}
+                open={openFilter === "people"}
+                panelId={panelId}
+                onClick={() => toggleFilter("people")}
+              />
+            )}
+          </div>
 
-      {people && people.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <PeopleFilter people={people} counts={personCounts} value={personIds} onChange={setPersonIds} />
-          {personIds.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setPersonIds([])}>
-              <X className="size-4" /> Clear
-            </Button>
+          {openFilter === "markers" && markers && markers.length > 0 && (
+            <FilterPanel id={panelId} onClear={markerIds.length > 0 ? () => setMarkerIds([]) : undefined}>
+              <MarkerFilter markers={markers} counts={markerCounts} value={markerIds} onChange={setMarkerIds} />
+            </FilterPanel>
+          )}
+          {openFilter === "people" && people && people.length > 0 && (
+            <FilterPanel id={panelId} onClear={personIds.length > 0 ? () => setPersonIds([]) : undefined}>
+              <PeopleFilter people={people} counts={personCounts} value={personIds} onChange={setPersonIds} />
+            </FilterPanel>
           )}
         </div>
       )}
@@ -186,6 +202,62 @@ export default function HistoryPage() {
         highlight={search}
       />
     </main>
+  );
+}
+
+type FilterKind = "markers" | "people";
+
+/** Collapsed filter badge: shows how many chips are picked; tapping it opens the chips. */
+function FilterToggle({
+  label,
+  Icon,
+  picked,
+  open,
+  panelId,
+  onClick,
+}: {
+  label: string;
+  Icon: LucideIcon;
+  picked: number;
+  open: boolean;
+  panelId: string;
+  onClick: () => void;
+}) {
+  const active = picked > 0;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={open ? panelId : undefined}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
+        (active || open) && "text-foreground",
+        open && "border-foreground"
+      )}
+    >
+      <Icon className="size-3.5" strokeWidth={active || open ? 2.25 : 1.75} />
+      {label}
+      {active && (
+        <span className="min-w-4 rounded-full bg-foreground px-1 text-center text-[10px] font-semibold leading-4 tabular-nums text-background">
+          {picked}
+        </span>
+      )}
+      <ChevronDown className={cn("size-3.5 transition-transform duration-200", open && "rotate-180")} />
+    </button>
+  );
+}
+
+function FilterPanel({ id, onClear, children }: { id: string; onClear?: () => void; children: ReactNode }) {
+  return (
+    <div id={id} className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3 shadow-card">
+      {children}
+      {onClear && (
+        <Button variant="ghost" size="sm" onClick={onClear}>
+          <X className="size-4" /> Clear
+        </Button>
+      )}
+    </div>
   );
 }
 

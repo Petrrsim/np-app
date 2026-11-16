@@ -28,12 +28,12 @@ export function EntryForm() {
   const latest = useLatestMetrics();
 
   return (
-    <Card className="w-full max-w-xl">
-      <CardHeader>
+    <Card className="w-full max-w-xl max-sm:flex max-sm:flex-col">
+      <CardHeader className="max-sm:flex-row max-sm:items-baseline max-sm:justify-between max-sm:p-4 max-sm:pb-2">
         <CardTitle className="text-xl">New Entry</CardTitle>
         <p className="text-sm text-muted-foreground">{format(today, "EEEE, d MMMM yyyy")}</p>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
+      <CardContent className="flex flex-col gap-6 max-sm:flex-1 max-sm:gap-3.5 max-sm:p-4 max-sm:pt-0">
         {latest.isPending ? (
           // Wait for the previous log's values so the sliders don't visibly jump from the defaults.
           <div className="flex h-96 items-center justify-center">
@@ -92,8 +92,9 @@ function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; today
         value={fields}
         onChange={(patch) => setFields((f) => ({ ...f, ...patch }))}
         sleepLoggedToday={sleepLoggedToday}
+        fill
       />
-      <Button onClick={handleSave} disabled={create.isPending} className="w-full" size="lg">
+      <Button onClick={handleSave} disabled={create.isPending} className="w-full max-sm:h-11" size="lg">
         {create.isPending && <Loader2 className="size-4 animate-spin" />}
         Save Entry
       </Button>

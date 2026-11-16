@@ -81,13 +81,13 @@ export function SuccessButtons({
               aria-checked={selected}
               onClick={() => onChange(step)}
               className={cn(
-                "group flex h-20 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
+                "group flex h-20 max-sm:h-14 max-sm:gap-1 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
                 selected && cn(o.active, o.text, "hover:bg-transparent"),
               )}
             >
               <o.Icon
                 className={cn(
-                  "size-6 transition-transform duration-200 group-hover:-translate-y-0.5",
+                  "size-6 max-sm:size-5 transition-transform duration-200 group-hover:-translate-y-0.5",
                   selected && "scale-110",
                 )}
                 strokeWidth={selected ? 2.5 : 1.75}

@@ -96,7 +96,9 @@ optional markers (user-defined tags) and an encrypted note. Several logs
 per day are normal (e.g. morning + afternoon). **New Entry** (`/`) always logs for today; **History**
 lists logs newest→oldest with per-log edit/delete and four combinable filters: a calendar date,
 a word search over notes, a marker filter and a person filter (chips with counts; a log must carry every selected
-marker and include every selected person).
+marker and include every selected person). The marker / person chips are collapsed behind
+"Markers" / "People" toggle badges under the search (picked count on the badge); tapping one
+opens its chip panel (one at a time, with Clear).
 
 History search: client-side over the already-decrypted `comment` (no server query — notes are
 encrypted at rest). Matching is case- and diacritic-insensitive and substring-based ("uz" finds
@@ -139,7 +141,10 @@ row (one at a time, tap again to close). Buttons show the picked count (amber wh
 needs a rating); Sleep shows the logged level's icon + a colour dot instead. Inside the panel the
 pickers have no title; Activities / People / Markers have no Clear (deselect by tapping chips)
 and no inline "New" chip — lists are managed only in Settings (an empty picker links there).
-No "Optional" pills anywhere. New Entry remounts `EntryFields` after a save (`formKey`) so the
+No "Optional" pills anywhere. On phones (`max-sm:`) New Entry is sized to exactly one screen
+(`100svh` minus the header) so Save is visible without scrolling: tighter gaps/tiles, title + date
+on one row, the Note label visually hidden, and the Note box (`EntryFields fill`) absorbs the
+leftover height. Keep added rows within that budget (~660px on an iPhone 12 in Safari). New Entry remounts `EntryFields` after a save (`formKey`) so the
 open picker closes.
 
 New Entry behaviour:
