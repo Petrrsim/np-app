@@ -29,11 +29,11 @@ export function EntryForm() {
 
   return (
     <Card className="w-full max-w-xl max-sm:flex max-sm:flex-col">
-      <CardHeader className="max-sm:flex-row max-sm:items-baseline max-sm:justify-between max-sm:p-4 max-sm:pb-2">
+      <CardHeader className="max-sm:flex-row max-sm:items-baseline max-sm:justify-between max-sm:p-4 max-sm:pb-3">
         <CardTitle className="text-xl">New Entry</CardTitle>
         <p className="text-sm text-muted-foreground">{format(today, "EEEE, d MMMM yyyy")}</p>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6 max-sm:flex-1 max-sm:gap-3.5 max-sm:p-4 max-sm:pt-0">
+      <CardContent className="flex flex-col gap-6 max-sm:flex-1 max-sm:gap-4 max-sm:p-4 max-sm:pt-0">
         {latest.isPending ? (
           // Wait for the previous log's values so the sliders don't visibly jump from the defaults.
           <div className="flex h-96 items-center justify-center">

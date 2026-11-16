@@ -81,7 +81,7 @@ export function SuccessButtons({
               aria-checked={selected}
               onClick={() => onChange(step)}
               className={cn(
-                "group flex h-20 max-sm:h-14 max-sm:gap-1 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
+                "group flex h-20 max-sm:h-16 max-sm:gap-1 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97]",
                 selected && cn(o.active, o.text, "hover:bg-transparent"),
               )}
             >

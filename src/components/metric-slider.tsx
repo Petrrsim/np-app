@@ -12,7 +12,7 @@ export function MetricSlider({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 max-sm:gap-1.5">
+    <div className="flex flex-col gap-2.5 max-sm:gap-2">
       <div className="flex items-center justify-between max-sm:h-5">
         <span className="text-sm font-medium">{label}</span>
         <span className="text-sm tabular-nums text-muted-foreground">

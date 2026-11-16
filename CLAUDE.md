@@ -143,8 +143,9 @@ pickers have no title; Activities / People / Markers have no Clear (deselect by 
 and no inline "New" chip — lists are managed only in Settings (an empty picker links there).
 No "Optional" pills anywhere. On phones (`max-sm:`) New Entry is sized to exactly one screen
 (`100svh` minus the header) so Save is visible without scrolling: tighter gaps/tiles, title + date
-on one row, the Note label visually hidden, and the Note box (`EntryFields fill`) absorbs the
-leftover height. Keep added rows within that budget (~660px on an iPhone 12 in Safari). New Entry remounts `EntryFields` after a save (`formKey`) so the
+on one row, the Note label visually hidden. With `EntryFields fill` the Note box grows into
+leftover height up to `max-h-32`, then `justify-between` spreads the rest into the section gaps
+(a huge Note box with cramped sections looked unbalanced). Keep added rows within that budget (~660px on an iPhone 12 in Safari). New Entry remounts `EntryFields` after a save (`formKey`) so the
 open picker closes.
 
 New Entry behaviour:

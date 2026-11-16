@@ -83,7 +83,7 @@ function ExtrasBar({
             aria-controls={on ? panelId : undefined}
             onClick={() => onToggle(key)}
             className={cn(
-              "relative flex h-14 max-sm:h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card px-1 text-[11px] font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97] sm:text-xs",
+              "relative flex h-14 max-sm:h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card px-1 text-[11px] font-medium text-muted-foreground transition-all duration-200 hover:bg-accent active:scale-[0.97] sm:text-xs",
               filled && "text-foreground",
               on && "border-foreground bg-foreground text-background hover:bg-foreground/90",
             )}
@@ -163,7 +163,7 @@ export function EntryFields({
   ];
 
   return (
-    <div className={cn("flex flex-col gap-5 max-sm:gap-3.5", fill && "max-sm:flex-1")}>
+    <div className={cn("flex flex-col gap-5 max-sm:gap-4", fill && "max-sm:flex-1 max-sm:justify-between")}>
       <MetricSlider label="Mood" value={value.mood} onChange={(v) => onChange({ mood: v })} />
       <MetricSlider label="Energy" value={value.energy} onChange={(v) => onChange({ energy: v })} />
       <MetricSlider label="Flow" value={value.flow} onChange={(v) => onChange({ flow: v })} />
@@ -194,7 +194,7 @@ export function EntryFields({
           </div>
         )}
       </div>
-      <div className={cn("flex flex-col gap-2", fill && "max-sm:flex-1")}>
+      <div className={cn("flex flex-col gap-2", fill && "max-sm:max-h-32 max-sm:flex-1")}>
         {/* Phones: the placeholder stands in for the label to save a row. */}
         <span className="text-sm font-medium max-sm:sr-only">Note</span>
         <Textarea
