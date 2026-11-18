@@ -49,21 +49,9 @@ import {
   Waves,
   Wine,
   Zap,
-  createLucideIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { ActivityType } from "@/types/db";
-
-/** Lucide has no parachute — drawn here on Lucide's 24px grid so it renders like the rest. */
-const Parachute = createLucideIcon("parachute", [
-  ["path", { d: "M3 10a9 7 0 0 1 18 0", key: "canopy" }],
-  ["path", { d: "M3 10q3-2 6 0t6 0t6 0", key: "hem" }],
-  ["path", { d: "M3 10l7 7", key: "l1" }],
-  ["path", { d: "M9 10l1.5 7", key: "l2" }],
-  ["path", { d: "M15 10l-1.5 7", key: "l3" }],
-  ["path", { d: "M21 10l-7 7", key: "l4" }],
-  ["rect", { x: "10", y: "17", width: "4", height: "4", rx: "1", key: "pack" }],
-]);
 
 /**
  * Icons an activity can use, by the name stored in `np_activities.icon`. Add freely; never
@@ -111,7 +99,6 @@ export const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   sprout: Sprout,
   tent: Tent,
   plane: Plane,
-  parachute: Parachute,
   car: Car,
   sun: Sun,
   moon: Moon,
