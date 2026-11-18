@@ -41,8 +41,6 @@ export default function DetectivePage() {
   const [words, setWords] = useStoredState<string[]>("np.detective.words", DEFAULT_WORDS);
   // null = the default ("negative…" markers), so new users get a sensible pick.
   const [pickedMarkers, setPickedMarkers] = useStoredState<number[] | null>("np.detective.markers", null);
-  // A start picked by hand (date picker / "look back from here"); null = detected.
-  const [startOverride, setStartOverride] = useState<number | null>(null);
   const [week, setWeek] = useState<number | null>(null);
 
   const today = todayDay();
@@ -59,8 +57,8 @@ export default function DetectivePage() {
   const ongoing = dips.find((d) => d.ongoing) ?? null;
   const current = series.smooth[series.smooth.length - 1] ?? null;
 
-  const anchor = Math.min(today, startOverride ?? ongoing?.start ?? today);
-  const from = anchor - lb.days;
+  // Everything looks back from today: logs in [today − window, today) are searched.
+  const from = today - lb.days;
 
   const markerIds = useMemo(
     () => pickedMarkers ?? defaultMarkerIds(markers ?? []),
@@ -100,23 +98,17 @@ export default function DetectivePage() {
   );
 
   const candidates = useMemo(
-    () => findCandidates(windowEntries, folded, from, anchor, anchor, ctx),
-    [windowEntries, folded, from, anchor, ctx]
+    () => findCandidates(windowEntries, folded, from, today, today, ctx),
+    [windowEntries, folded, from, today, ctx]
   );
   const bars = useMemo(() => weekBars(daily, from, today, candidates), [daily, from, today, candidates]);
-
-  const lookFrom = (day: number | null) => {
-    setStartOverride(day);
-    setWeek(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Detective</h1>
-          <p className="text-sm text-muted-foreground">Trace a feeling back to where it may have started.</p>
+          <p className="text-sm text-muted-foreground">Describe how you feel and find past logs that match.</p>
         </div>
         <div role="radiogroup" aria-label="Look back" className="flex items-center gap-0.5 rounded-xl bg-muted p-1">
           {LOOKBACKS.map((x) => (
@@ -161,16 +153,14 @@ export default function DetectivePage() {
               base={base}
               current={current}
               ongoing={ongoing}
-              anchor={anchor}
-              overridden={startOverride !== null}
-              onPickStart={lookFrom}
               metric={metric}
               onMetricChange={(m) => {
                 setMetric(m);
-                setStartOverride(null);
                 setWeek(null);
               }}
             />
+
+            <YearAgoCard sorted={sorted} today={today} highlight={highlight} />
 
             <FeelingCard
               feeling={feeling}
@@ -189,36 +179,27 @@ export default function DetectivePage() {
               base={base}
               from={from}
               today={today}
-              anchor={anchor}
               dips={dips}
               week={week}
               onWeekChange={setWeek}
             />
 
             <SourcesCard
-              key={`${week}|${anchor}|${lookback}`}
+              key={`${week}|${lookback}`}
               candidates={candidates}
               week={week}
               onClearWeek={() => setWeek(null)}
               weekEntries={windowEntries}
               folded={folded}
               ctx={ctx}
-              anchor={anchor}
+              anchor={today}
               lookbackLabel={lb.long}
               highlight={highlight}
             />
 
-            <PeopleCard entries={windowEntries} from={from} anchor={anchor} people={people ?? []} />
+            <PeopleCard entries={windowEntries} from={from} anchor={today} people={people ?? []} />
 
-            <DipsCard dips={dips} base={base} anchor={anchor} onLookFrom={lookFrom} />
-
-            <YearAgoCard
-              sorted={sorted}
-              daily={daily}
-              today={today}
-              anchor={anchor}
-              highlight={highlight}
-            />
+            <DipsCard dips={dips} base={base} />
           </div>
         )
       )}

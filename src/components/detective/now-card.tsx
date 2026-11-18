@@ -1,19 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import { format } from "date-fns";
-import { RotateCcw } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { DatePicker } from "@/components/date-picker";
 import { MetricTile } from "@/components/dashboard/stat-tiles";
 import { cn } from "@/lib/utils";
-import { METRICS, dayToDate, fmt1, sparkline, summarize, toDay, type ChartPoint } from "@/lib/stats";
+import { METRICS, fmt1, sparkline, summarize, type ChartPoint } from "@/lib/stats";
 import { SIGNAL_METRICS, fmtDay, type Baseline, type Dip, type SignalMetric } from "@/lib/detective";
 
 /**
  * "Right now": last 7 days vs. the 12-month average per slider, whether a dip is running and
- * since when, and the start date everything below looks back from (detected or picked).
+ * since when.
  */
 export function NowCard({
   points,
@@ -21,9 +17,6 @@ export function NowCard({
   base,
   current,
   ongoing,
-  anchor,
-  overridden,
-  onPickStart,
   metric,
   onMetricChange,
 }: {
@@ -32,9 +25,6 @@ export function NowCard({
   base: Baseline | null;
   current: number | null;
   ongoing: Dip | null;
-  anchor: number;
-  overridden: boolean;
-  onPickStart: (day: number | null) => void;
   metric: SignalMetric;
   onMetricChange: (m: SignalMetric) => void;
 }) {
@@ -67,10 +57,10 @@ export function NowCard({
     )} for ${ongoing.days} days, lowest ${fmt1(ongoing.low)}.`;
   } else if (current !== null && current < base.mean) {
     headline = "A little under your usual";
-    detail = `No clear dip right now (7-day ${fmt1(current)} vs. usual ${fmt1(base.mean)}). Pick the day the feeling started to look back from it.`;
+    detail = `No clear dip right now (7-day ${fmt1(current)} vs. usual ${fmt1(base.mean)}).`;
   } else {
     headline = "Around or above your usual";
-    detail = "No dip to trace right now. You can still pick a day to look back from, or investigate an earlier dip below.";
+    detail = "No dip right now. You can still describe a feeling below to find past logs that match it.";
   }
 
   return (
@@ -112,26 +102,6 @@ export function NowCard({
             spark={t.spark}
           />
         ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/60 px-3 py-2">
-        <span className="text-sm">
-          Looking back from <span className="font-medium">{format(dayToDate(anchor), "EEE, d MMM yyyy")}</span>
-          <span className="text-muted-foreground">
-            {overridden ? " · picked by you" : ongoing ? " · start of the dip" : " · today"}
-          </span>
-        </span>
-        <div className="ml-auto flex items-center gap-1">
-          {overridden && (
-            <Button variant="ghost" size="sm" onClick={() => onPickStart(null)}>
-              <RotateCcw className="size-4" /> Auto
-            </Button>
-          )}
-          <DatePicker
-            selected={dayToDate(anchor)}
-            onSelect={(d) => d && onPickStart(Math.min(today, toDay(format(d, "yyyy-MM-dd"))))}
-          />
-        </div>
       </div>
     </Card>
   );

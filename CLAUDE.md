@@ -141,16 +141,17 @@ come from" game — everything is client-side over the cached `useEntries` histo
 functions in [src/lib/detective.ts](src/lib/detective.ts); nothing leaves the browser. Daily value
 = mean of the day's logs (metric picker: All = per-log mean of M/E/F, or one slider). Baseline =
 average of the last 365 days; a **dip** = the 7-day trailing line more than ½ SD under it for ≥ 5
-days, widened to where it crosses the baseline, with dips ≤ 4 days apart merged. The page looks back
-from the **anchor** — the start of the ongoing dip, else today, or a day picked by hand / via
-"Look back" on a past dip — over a 1M/3M/6M/1Y window (default 1Y). Logs in [anchor − window,
-anchor) are scored: words from the user's own feeling description (+3 each, Czech-ish stemming in
+days, widened to where it crosses the baseline, with dips ≤ 4 days apart merged (dips are shown for
+context only). The page always looks back from **today** over a 1M/3M/6M/1Y window (default 1Y) —
+no anchor/start picking. Logs in [today − window, today) are scored: words from the user's own feeling description (+3 each, Czech-ish stemming in
 `feelingTerms`), tagged person with low NP (+3; OK NP +1), signal markers (+2; default = markers
 named "negative…"), heavy words (+1 each, max 3; editable list, `DEFAULT_WORDS`), and "you felt low
 that day" (+1). Term matching is word-start on folded text (`termsRegex` in search.ts; ≤ 3-letter
 terms = whole words); `EntryCard`'s `highlight` accepts that term array (pass a stable array).
 The week strip shows weekly deviation from the baseline; tapping a week lists all its logs. The
-year-ago card shows logs ±3 days around the same date 1–4 years back (from today or the anchor).
+"A year ago" card (right under the Now card, above "How does it feel?") is a one-log-at-a-time
+horizontal snap carousel over the logs from one year ago ± 3 days, opening on the anniversary's first
+log (‹ › buttons + counter; the box height follows the log in view).
 Lookback, metric, feeling text and signal lists persist per browser via `useStoredState`.
 
 Form fields ([entry-fields.tsx](src/components/entry-fields.tsx), shared by New Entry and the

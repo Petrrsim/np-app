@@ -11,7 +11,7 @@ const HALF = 34; // px above / below the baseline line
 
 /**
  * One bar per week from the start of the look-back window to today: the weekly average as a
- * deviation from the usual level, dips shaded, the start of the feeling as a line and a dot
+ * deviation from the usual level, dips shaded and a dot
  * under weeks that hold signals. Tapping a week lists all its logs below.
  */
 export function MoodStrip({
@@ -19,7 +19,6 @@ export function MoodStrip({
   base,
   from,
   today,
-  anchor,
   dips,
   week,
   onWeekChange,
@@ -28,7 +27,6 @@ export function MoodStrip({
   base: Baseline | null;
   from: number;
   today: number;
-  anchor: number;
   dips: Dip[];
   week: number | null;
   onWeekChange: (w: number | null) => void;
@@ -72,7 +70,7 @@ export function MoodStrip({
       </div>
 
       <div className="relative">
-        {/* Dips (shaded) and the start of the feeling. */}
+        {/* Dips (shaded). */}
         {dips
           .filter((d) => d.end >= first)
           .map((d) => (
@@ -83,13 +81,6 @@ export function MoodStrip({
             />
           ))}
         <div className="pointer-events-none absolute inset-x-0 border-t border-input" style={{ top: HALF }} />
-        {anchor >= first && (
-          <div
-            className="pointer-events-none absolute top-[-4px] z-10 border-l-2 border-dashed border-foreground/70"
-            style={{ left: pct(anchor), height: HALF * 2 + 8 }}
-            title={`Feeling started ${fmtDay(anchor)}`}
-          />
-        )}
         {yearAgo >= first && (
           <div
             className="pointer-events-none absolute top-0 border-l border-foreground/25"
@@ -103,7 +94,7 @@ export function MoodStrip({
             const h = dev === null ? 0 : Math.max(2, (Math.abs(dev) / maxAbs) * HALF);
             const up = (dev ?? 0) >= 0;
             const selected = week === b.start;
-            const inWindow = b.start + 6 >= from && b.start < anchor;
+            const inWindow = b.start + 6 >= from && b.start <= today;
             const label = `Week of ${fmtDay(b.start)}: ${
               b.value === null ? "no logs" : `${fmt1(b.value)}${dev !== null ? ` (${fmtSigned(dev)})` : ""}`
             }${b.hits ? ` · ${b.hits} with signals` : ""}`;
