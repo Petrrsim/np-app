@@ -161,6 +161,26 @@ Invoked via `supabase.functions.invoke(name, { body })`:
 - Entry **deletion** does NOT use an edge function — it's a direct
   `supabase.from("np_entries").delete().eq("id", id)` (RLS authorizes).
 
+### Source code is not recoverable (checked 2026-11-18)
+
+The source of `save-entry`, `update-entry` and `decrypt-entries` is **not in this repo and
+can't be fetched**: Supabase returns "deployment is missing metadata" for all three (only a
+redeploy fixes that), the old Vite app's git history never contained `supabase/functions/`,
+and no copy exists locally. The note encryption happens inside these functions with a key
+held as an edge-function secret (not in Postgres, Vault or any DB function), and the scheme
+is unknown — ciphertexts are base64 in `comment_encrypted`.
+
+Consequences / rules:
+- **Never redeploy or overwrite these three functions** (CLI, dashboard or MCP) without the
+  original source: a function with a different scheme or key would make every note
+  unreadable or write notes the old reader can't decrypt.
+- That's why sleep, activities, people and markers are written with direct table queries
+  after `save-entry` (below) instead of extending the functions.
+- If the functions ever need changing, the safe path is new functions under **new names**
+  with a documented scheme, re-encrypting notes into a new column (the old one kept as a
+  fallback) and switching the app only after every note is verified to match.
+- Other deployed functions not used by this app: `webhook-proxy`, `collective-stats`.
+
 ## Data-access rules for the rebuild
 
 1. All entry **reads/writes** go through the edge functions above — never read

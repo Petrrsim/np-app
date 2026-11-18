@@ -23,7 +23,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `npm test` — run the Vitest suite once (`npm run test:watch` to keep it running).
 
-There is no test runner configured.
+Tests cover the pure logic only: `src/lib/{stats,detective,search}.test.ts`, with a
+`DecryptedEntry` factory in [src/test/fixtures.ts](src/test/fixtures.ts) (config:
+[vitest.config.mts](vitest.config.mts), which maps the `@/` alias). Add a test when changing
+those files — especially the dip / baseline / scoring thresholds.
 
 **Stale CSS in dev:** after editing theme tokens in `globals.css`, Turbopack's persistent cache
 (`.next/dev/cache`) can keep serving the old CSS even across restarts (new `--*` tokens and
@@ -235,8 +238,8 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
    for entry read/write — never query `np_entries.comment`/`comment_encrypted` directly.
 2. **Direct table access** — non-sensitive data only, with RLS handling authorization: `np_profiles`
    reads/updates, entry deletion, metric edits in `useUpdateEntry`, and everything about
-   `sleep_quality`. The deployed edge functions don't know `sleep_quality` (and their source can't
-   be fetched — "deployment is missing metadata"), so: `edge.ts` strips `sleep` from edge payloads;
+   `sleep_quality`. The deployed edge functions don't know `sleep_quality` (and their source is lost —
+   see SUPABASE.md; **never redeploy them**), so: `edge.ts` strips `sleep` from edge payloads;
    `useCreateEntry` calls `save-entry` then sets `sleep_quality` on the new row (returned `id`, else
    newest row for that date); `useEntries` merges a direct `select id, sleep_quality` in by `id`.
    Activities live in their own table `np_entry_activities` (direct access, same pattern: insert
