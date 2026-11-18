@@ -1,0 +1,36 @@
+name: Backup diary to Google Drive
+
+on:
+  schedule:
+    - cron: "23 2 * * *" # nightly, ~03:23/04:23 Prague time
+  workflow_dispatch: # "Run workflow" button for a manual backup
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # export.ts is imported via Node type stripping; silence the module-type notice about it.
+      - run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup-to-drive.mjs
+        env:
+          NP_EMAIL: ${{ secrets.NP_EMAIL }}
+          NP_PASSWORD: ${{ secrets.NP_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}

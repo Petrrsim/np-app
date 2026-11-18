@@ -18,8 +18,11 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function toRecord(e: DecryptedEntry, names: ExportNames) {
+export type ExportRecord = ReturnType<typeof toRecord>;
+
+export function toRecord(e: DecryptedEntry, names: ExportNames) {
   return {
+    id: e.id,
     date: e.entry_date,
     created_at: e.created_at,
     mood: num(e.mood),
@@ -53,10 +56,14 @@ function csvCell(v: unknown): string {
 }
 
 export function entriesToCsv(entries: DecryptedEntry[], names: ExportNames): string {
+  return recordsToCsv(chronological(entries).map((e) => toRecord(e, names)));
+}
+
+/** CSV from export records (also used by scripts/decrypt-backup.mjs on a Drive backup). */
+export function recordsToCsv(records: Omit<ExportRecord, "id">[]): string {
   const header = ["date", "created_at", "mood", "energy", "flow", "success", "sleep", "activities", "people", "markers", "note"];
-  const rows = chronological(entries).map((e) => {
-    const r = toRecord(e, names);
-    return [
+  const rows = records.map((r) =>
+    [
       r.date,
       r.created_at,
       r.mood,
@@ -70,10 +77,10 @@ export function entriesToCsv(entries: DecryptedEntry[], names: ExportNames): str
       r.note,
     ]
       .map(csvCell)
-      .join(",");
-  });
+      .join(","),
+  );
   // BOM so Excel opens UTF-8 (Czech diacritics) correctly.
-  return "﻿" + [header.join(","), ...rows].join("\r\n");
+  return "\uFEFF" + [header.join(","), ...rows].join("\r\n");
 }
 
 export function downloadFile(filename: string, content: string, type: string) {

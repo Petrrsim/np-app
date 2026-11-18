@@ -21,6 +21,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm start` — serve the production build.
 - `npm run lint` — run ESLint (`eslint-config-next`).
 
+- `npm test` — run the Vitest suite once (`npm run test:watch` to keep it running).
+
 There is no test runner configured.
 
 **Stale CSS in dev:** after editing theme tokens in `globals.css`, Turbopack's persistent cache
@@ -48,6 +50,7 @@ src/
     icon.png · apple-icon.png                  tab favicon (192px) + iOS home-screen icon (180px), resized
                                                from media/np_logo.png (file-convention icons, no <link> code)
     login/page.tsx                             bare login screen (signInWithPassword)
+    privacy/page.tsx                           public privacy policy (needed by the Google OAuth consent screen)
     (protected)/                               route group behind <AuthGate> + <AppHeader>
       layout.tsx · page.tsx (New Entry, "/") · history/page.tsx · dashboard/page.tsx ·
       detective/page.tsx · settings/page.tsx
@@ -278,3 +281,24 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
 - **Domain:** https://np.pt-solutions.tech — DNS `CNAME np → cname.vercel-dns.com`. The app runs at the
   domain root (no `basePath`); Supabase Auth's Site URL points there.
 - Run `npm run build` before pushing — a failed Vercel build leaves the previous deployment live.
+
+## Scheduled backup (Google Drive)
+
+[.github/workflows/backup.yml](.github/workflows/backup.yml) runs nightly (and on demand via "Run workflow")
+[scripts/backup-to-drive.mjs](scripts/backup-to-drive.mjs): signs in as the user, loads the full decrypted
+history the same way as `useEntries`, and merges it into **one cumulative file**, `np-diary-backup.json`, in
+the Drive folder "NP Diary backups" (records from `toRecord` in `src/lib/export.ts`, imported directly via
+Node type stripping — keep that file free of non-erasable TS syntax like enums and of runtime `@/` imports).
+Merge by log `id`: new logs added, edited ones updated, logs deleted in the app are **kept** with
+`removed_from_app: <date>` — the file never loses a log. It refuses to run on a partial history.
+Notes are stored as `note_encrypted` (AES-256-GCM, key = scrypt of `BACKUP_PASSPHRASE` + the file's salt,
+[scripts/backup-crypto.mjs](scripts/backup-crypto.mjs)) — independent of the server-side encryption, so the
+backup is readable without Supabase; metrics/tags stay plain. A `check` field makes a wrong passphrase fail
+before anything is overwritten (so the passphrase can't be changed without starting a new file). Unchanged
+notes keep their old ciphertext. Read a backup locally with
+`node scripts/decrypt-backup.mjs np-diary-backup.json` (writes `.decrypted.json` / `.csv`). Drive's revision
+history of the file is the only point-in-time history. Drive scope is `drive.file` (it only sees files it
+created). Repo secrets: `NP_EMAIL`, `NP_PASSWORD`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `BACKUP_PASSPHRASE`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (get the last one once with
+[scripts/google-auth.mjs](scripts/google-auth.mjs)). The Google OAuth consent screen must be **In production**
+— in "Testing" the refresh token expires after 7 days. Changing the app password means updating `NP_PASSWORD`.
