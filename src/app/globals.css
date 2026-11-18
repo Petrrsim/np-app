@@ -84,6 +84,15 @@
   --chart-energy: #eb6834;
   --chart-flow: #1baf7a;
 
+  /* Year heatmap: diverging red (below your average) ↔ blue (above), neutral gray middle. */
+  --heat-lo-3: #b8322b;
+  --heat-lo-2: #e2786c;
+  --heat-lo-1: #f4c6bf;
+  --heat-mid: #e6e4de;
+  --heat-hi-1: #c4d9f3;
+  --heat-hi-2: #6fa3e3;
+  --heat-hi-3: #2264be;
+
   --card-shadow: 0 1px 2px rgb(28 27 31 / 0.04), 0 8px 24px -12px rgb(28 27 31 / 0.1);
 
   --radius: 0.75rem;

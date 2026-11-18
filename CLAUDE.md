@@ -59,7 +59,8 @@ src/
                     activity-picker, people-picker, marker-picker, entry-card,
                     edit-entry-dialog, delete-entry-button, date-picker
     dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
-                    stat-tiles (Mood/Energy/Flow tiles) · insights (weekday / success / tag / sleep cards)
+                    stat-tiles (Mood/Energy/Flow tiles) · year-heatmap (daily calendar) ·
+                    insights (weekday / success / tag / sleep cards)
     detective/      now-card (dip status + look-back start) · feeling-card (own words + signal lists) ·
                     mood-strip (weekly bars) · sources-card (ranked logs / one week) · people-card ·
                     dips-card · year-ago-card
@@ -121,7 +122,7 @@ by pure functions in [src/lib/stats.ts](src/lib/stats.ts) (no extra queries). A 
 (7D / 30D / 90D / 1Y / All, default 7D) scopes all of it. Top to bottom: Mood / Energy / Flow
 average tiles (delta vs. the previous period of the same length + sparkline) → the chart card
 (toggles: Mood / Energy / Flow lines, Success markers, per-metric moving-average "Trend" lines with a
-7/30/90d window, zoom) → the selected log → Insights (weekday rhythm, wins vs. misses, and
+7/30/90d window, zoom) → the selected log → the year heatmap → Insights (weekday rhythm, wins vs. misses, and
 activities / people / sleep / markers cards that only appear when the range has that data). Data quirks the code relies on: metrics can be decimals or numeric strings
 (`num()` coerces), ~640 old logs have no metrics at all (excluded from the chart via
 `buildPoints`), and Flow only exists since mid-2025. The chart
@@ -131,7 +132,11 @@ log (not per day), horizontally scrollable with zoom levels; it **only renders t
 pill when logs are > 10 days apart. Moving averages are trailing *calendar-day* windows
 (7/30/90d) computed over the full history, then sliced to the range. Success ±1 shows as a
 tinted column wash plus ✓/✗ (zoomed-out: ▲/▼) glyphs in a lane under the plot. Clicking a point
-(or ←/→ on the focused chart) shows that log's `EntryCard` below the chart. Series colours are
+(or ←/→ on the focused chart) shows that log's `EntryCard` below the chart. The year heatmap
+([year-heatmap.tsx](src/components/dashboard/year-heatmap.tsx)) ignores the range picker: its own
+year stepper + All/Mood/Energy/Flow picker (persisted), 12 Mon-first month grids, one cell per day
+(daily mean via `dailyValues`), coloured on a diverging red↔blue scale (`--heat-*` tokens, 7 bins
+in SDs) around *that year's* own average; tapping a day lists its logs below. Series colours are
 the `--chart-mood/energy/flow` tokens — a CVD-validated set; don't swap in other hues casually.
 `METRICS` references them as `var(--chart-x, #hex)`: keep the hex fallbacks — with a stale dev
 CSS cache a missing token makes SVG strokes vanish (dots still show, lines don't).

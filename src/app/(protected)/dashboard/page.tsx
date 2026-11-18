@@ -8,6 +8,7 @@ import { EntryCard } from "@/components/entry-card";
 import { TrendCard } from "@/components/dashboard/trend-card";
 import { MetricTile } from "@/components/dashboard/stat-tiles";
 import { Insights } from "@/components/dashboard/insights";
+import { YearHeatmap } from "@/components/dashboard/year-heatmap";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -208,6 +209,8 @@ export default function DashboardPage() {
                 </p>
               )
             )}
+
+            <YearHeatmap points={allPoints} entries={sorted} />
 
             <h2 className="mt-4 px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Insights
