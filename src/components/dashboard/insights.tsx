@@ -30,7 +30,7 @@ import {
   type TagStat,
 } from "@/lib/stats";
 
-function InsightCard({
+export function InsightCard({
   title,
   description,
   action,

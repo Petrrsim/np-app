@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Status:** Rebuilt from scratch on 2026-06-03 (Next.js). The previous Vite SPA was deleted; the
 > Supabase backend (data + edge functions) was preserved and is documented in
-> [SUPABASE.md](SUPABASE.md). Single-user personal diary — four screens (New Entry, History, Dashboard, Settings) + login.
+> [SUPABASE.md](SUPABASE.md). Single-user personal diary — five screens (New Entry, History, Dashboard, Detective, Settings) + login.
 
 ## Skills
 
@@ -50,7 +50,7 @@ src/
     login/page.tsx                             bare login screen (signInWithPassword)
     (protected)/                               route group behind <AuthGate> + <AppHeader>
       layout.tsx · page.tsx (New Entry, "/") · history/page.tsx · dashboard/page.tsx ·
-      settings/page.tsx
+      detective/page.tsx · settings/page.tsx
   components/
     ui/             shadcn-style primitives (button, card, input, textarea, slider, dialog,
                     alert-dialog, popover, sonner)
@@ -60,16 +60,21 @@ src/
                     edit-entry-dialog, delete-entry-button, date-picker
     dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
                     stat-tiles (Mood/Energy/Flow tiles) · insights (weekday / success / tag / sleep cards)
+    detective/      now-card (dip status + look-back start) · feeling-card (own words + signal lists) ·
+                    mood-strip (weekly bars) · sources-card (ranked logs / one week) · people-card ·
+                    dips-card · year-ago-card
     settings/       list-manager (add/rename/icon/hide/delete for one list) · data-card (CSV/JSON
                     export) · account-card (email, change password, sign out)
   contexts/         auth-context.tsx (useAuth)
-  hooks/            use-entries.ts (list/create/update/delete incl. activities, people, markers,
+  hooks/            use-stored-state.ts (localStorage-backed useState for per-browser UI prefs)
+                    use-entries.ts (list/create/update/delete incl. activities, people, markers,
                     latest metrics, sleep-logged-on; usePeople/useMarkers lists + create)
                     use-lists.ts (useActivities/useActivityLookup/useCreateActivity; generic
                     useUpdateListItem/useDeleteListItem/useReorderList for all three lists)
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
                     activities.ts (activity icon registry, key slugs, lookup), search.ts (History
-                    note search + highlight), stats.ts (pure Dashboard computations),
+                    note search + highlight, word-start signal terms), stats.ts (pure Dashboard
+                    computations), detective.ts (pure Detective computations),
                     export.ts (CSV/JSON backup)
   types/            db.ts (shared domain types / DB contract)
 media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx; source for the icons)
@@ -130,6 +135,23 @@ tinted column wash plus ✓/✗ (zoomed-out: ▲/▼) glyphs in a lane under the
 the `--chart-mood/energy/flow` tokens — a CVD-validated set; don't swap in other hues casually.
 `METRICS` references them as `var(--chart-x, #hex)`: keep the hex fallbacks — with a stale dev
 CSS cache a missing token makes SVG strokes vanish (dots still show, lines don't).
+
+Detective (`/detective`, nav icon on phones): a no-LLM tool for the user's "where did this feeling
+come from" game — everything is client-side over the cached `useEntries` history, by pure
+functions in [src/lib/detective.ts](src/lib/detective.ts); nothing leaves the browser. Daily value
+= mean of the day's logs (metric picker: All = per-log mean of M/E/F, or one slider). Baseline =
+average of the last 365 days; a **dip** = the 7-day trailing line more than ½ SD under it for ≥ 5
+days, widened to where it crosses the baseline, with dips ≤ 4 days apart merged. The page looks back
+from the **anchor** — the start of the ongoing dip, else today, or a day picked by hand / via
+"Look back" on a past dip — over a 1M/3M/6M/1Y window (default 1Y). Logs in [anchor − window,
+anchor) are scored: words from the user's own feeling description (+3 each, Czech-ish stemming in
+`feelingTerms`), tagged person with low NP (+3; OK NP +1), signal markers (+2; default = markers
+named "negative…"), heavy words (+1 each, max 3; editable list, `DEFAULT_WORDS`), and "you felt low
+that day" (+1). Term matching is word-start on folded text (`termsRegex` in search.ts; ≤ 3-letter
+terms = whole words); `EntryCard`'s `highlight` accepts that term array (pass a stable array).
+The week strip shows weekly deviation from the baseline; tapping a week lists all its logs. The
+year-ago card shows logs ±3 days around the same date 1–4 years back (from today or the anchor).
+Lookback, metric, feeling text and signal lists persist per browser via `useStoredState`.
 
 Form fields ([entry-fields.tsx](src/components/entry-fields.tsx), shared by New Entry and the
 History edit dialog) in order: Mood, Energy, Flow sliders → Success → Sleep / Activities / People /

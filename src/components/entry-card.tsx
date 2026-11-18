@@ -12,7 +12,7 @@ import { ActivityBadge } from "@/components/activity-picker";
 import { PersonBadge } from "@/components/people-picker";
 import { MarkerBadge } from "@/components/marker-picker";
 import { useMarkers, usePeople } from "@/hooks/use-entries";
-import { splitMatches } from "@/lib/search";
+import { splitMatches, splitTerms } from "@/lib/search";
 
 function Metric({ label, value }: { label: string; value: number | null }) {
   return (
@@ -43,7 +43,8 @@ export const EntryCard = memo(function EntryCard({
   highlight = "",
 }: {
   entry: DecryptedEntry;
-  highlight?: string;
+  /** A search query (substring match), or a list of word-start terms (keep the array stable). */
+  highlight?: string | string[];
 }) {
   const time = loggedTime(entry);
   const { data: markers } = useMarkers();
@@ -86,7 +87,10 @@ export const EntryCard = memo(function EntryCard({
 
         {entry.comment?.trim() ? (
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
-            {splitMatches(entry.comment, highlight).map((part, i) =>
+            {(Array.isArray(highlight)
+              ? splitTerms(entry.comment, highlight)
+              : splitMatches(entry.comment, highlight)
+            ).map((part, i) =>
               part.match ? (
                 <mark key={i} className="rounded-sm bg-yellow-200/80 px-0.5 text-foreground">
                   {part.text}

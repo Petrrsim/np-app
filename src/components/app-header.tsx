@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings } from "lucide-react";
+import { ScanSearch, Settings, type LucideIcon } from "lucide-react";
 import { NpLogo } from "@/components/np-logo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-const links = [
-  { href: "/", label: "New Entry" },
+// `short` / `Icon` replace the label on phones, where four full labels don't fit.
+const links: { href: string; label: string; short?: string; Icon?: LucideIcon }[] = [
+  { href: "/", label: "New Entry", short: "New" },
   { href: "/history", label: "History" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/detective", label: "Detective", Icon: ScanSearch },
 ];
 
 export function AppHeader() {
@@ -26,14 +28,27 @@ export function AppHeader() {
               <Link
                 key={l.href}
                 href={l.href}
+                aria-label={l.label}
                 className={cn(
-                  "rounded-lg px-2.5 py-1 text-sm font-medium transition-all sm:px-3",
+                  "flex min-h-7 items-center rounded-lg px-2.5 py-1 text-sm font-medium transition-all sm:px-3",
                   pathname === l.href
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {l.label}
+                {l.Icon ? (
+                  <>
+                    <l.Icon className="size-4 sm:hidden" aria-hidden />
+                    <span className="hidden sm:inline">{l.label}</span>
+                  </>
+                ) : l.short ? (
+                  <>
+                    <span className="sm:hidden">{l.short}</span>
+                    <span className="hidden sm:inline">{l.label}</span>
+                  </>
+                ) : (
+                  l.label
+                )}
               </Link>
             ))}
           </nav>
