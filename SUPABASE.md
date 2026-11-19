@@ -143,6 +143,9 @@ Invoked via `supabase.functions.invoke(name, { body })`:
 | `update-entry`    | `{ entryId, comment }` (only the encrypted note)                 | `{ ok: true }` |
 | `decrypt-entries` | `{ limit?, offset? }` — newest first; default 20 rows, `limit` capped at 1000 | `{ entries: DecryptedEntry[] }` |
 
+- **`decrypt-entries` paging is unstable on ties:** it orders by date/time only, and ~1k imported logs
+  share both, so a tied row can appear on two pages and its twin on none. Callers fetch overlapping
+  pages (stride 900, limit 1000) and dedupe by `id`; the backup also checks every table id came back.
 - `success` is the `SuccessStep` union (`-1 | 0 | 1`).
 - The note maps to the encrypted comment: `save-entry` names this field `note`, but
   `update-entry` names it `comment` (and uses `entryId` rather than `id`). The wrappers in

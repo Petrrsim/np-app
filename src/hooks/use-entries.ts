@@ -20,6 +20,10 @@ export const ACTIVITIES_KEY = ["activities"] as const;
 
 // decrypt-entries returns at most 1000 rows per call (20 if no limit is sent).
 const PAGE_SIZE = 1000;
+// decrypt-entries orders by date/time only, and ~1k imported logs share both, so tied rows can
+// swap across a page boundary (one returned twice, its twin never). Decrypt pages therefore
+// overlap by 100 rows; duplicates are dropped by id below.
+const DECRYPT_STRIDE = 900;
 
 /**
  * Loads the full decrypted history. The row count comes from a direct (RLS-scoped,
@@ -40,21 +44,22 @@ async function fetchAllEntries(): Promise<DecryptedEntry[]> {
     .select("id", { count: "exact", head: true });
   if (error) throw error;
 
-  const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
-  const range = Array.from({ length: pages }, (_, i) => i);
+  const total = count ?? 0;
+  const decryptPages = Math.max(1, Math.ceil(total / DECRYPT_STRIDE));
+  const sleepPages = Array.from({ length: Math.max(1, Math.ceil(total / PAGE_SIZE)) }, (_, i) => i);
   const [results, sleep, activities, markers, people] = await Promise.all([
     Promise.all(
-      range.map((i) =>
-        i === 0 ? firstPage : edge.decryptEntries({ limit: PAGE_SIZE, offset: i * PAGE_SIZE }),
+      Array.from({ length: decryptPages }, (_, i) =>
+        i === 0 ? firstPage : edge.decryptEntries({ limit: PAGE_SIZE, offset: i * DECRYPT_STRIDE }),
       ),
     ),
-    fetchSleepById(range),
+    fetchSleepById(sleepPages),
     activitiesReq,
     markersReq,
     peopleReq,
   ]);
 
-  // Dedupe by id in case an entry was added/removed between page requests.
+  // Dedupe by id: pages overlap, and an entry can be added/removed between page requests.
   const byId = new Map<number, DecryptedEntry>();
   for (const { entries } of results) {
     for (const e of entries ?? []) {

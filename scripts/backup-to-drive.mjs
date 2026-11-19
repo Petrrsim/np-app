@@ -20,6 +20,9 @@ const env = (name, fallback) => {
 };
 
 const PAGE = 1000; // decrypt-entries caps `limit` at 1000
+// decrypt-entries sorts by date/time only, and ~1k imported logs share both, so tied rows can swap
+// across a page boundary (one returned twice, its twin never). Overlapping pages cover that.
+const STRIDE = 900;
 const FOLDER = env("DRIVE_FOLDER", "NP Diary backups");
 const FILE = "np-diary-backup.json";
 const PASSPHRASE = env("BACKUP_PASSPHRASE");
@@ -74,10 +77,10 @@ async function loadHistory() {
   const { count, error } = await supabase.from("np_entries").select("id", { count: "exact", head: true });
   if (error) throw new Error(`count: ${error.message}`);
 
-  const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE));
+  const pages = Math.max(1, Math.ceil((count ?? 0) / STRIDE));
   const [decrypted, sleepRows, actRows, peopleRows, markerRows, activities, people, markers] =
     await Promise.all([
-      Promise.all(Array.from({ length: pages }, (_, i) => decryptPage(i * PAGE))),
+      Promise.all(Array.from({ length: pages }, (_, i) => decryptPage(i * STRIDE))),
       readAll("np_entries", "id, sleep_quality", ["id"]),
       readAll("np_entry_activities", "entry_id, activity, feeling", ["id"]),
       readAll("np_entry_people", "entry_id, person_id, np", ["entry_id", "created_at", "person_id"]),
@@ -105,9 +108,10 @@ async function loadHistory() {
   }
   const entries = [...byId.values()];
 
-  // Never upload a partial backup: the decrypted set must cover every row in the table.
-  if (entries.length === 0 || entries.length < (count ?? 0)) {
-    throw new Error(`Incomplete history: decrypted ${entries.length} of ${count} logs`);
+  // Never upload a partial backup: every row in the table must have come back decrypted.
+  const missing = sleepRows.filter((r) => !byId.has(r.id)).map((r) => r.id);
+  if (entries.length === 0 || missing.length > 0) {
+    throw new Error(`Incomplete history: ${missing.length} of ${sleepRows.length} logs not decrypted (ids ${missing.slice(0, 20).join(", ")})`);
   }
 
   const label = new Map(activities.map((a) => [a.key, a.label]));
