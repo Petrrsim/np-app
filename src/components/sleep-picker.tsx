@@ -83,6 +83,7 @@ export function SleepPicker({
         value={value}
         onChange={onChange}
         ariaLabel="Sleep quality"
+        className="h-14 gap-1 [&_svg]:size-5"
       />
     </div>
   );
