@@ -23,10 +23,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `npm test` — run the Vitest suite once (`npm run test:watch` to keep it running).
 
-Tests cover the pure logic only: `src/lib/{stats,detective,search}.test.ts`, with a
-`DecryptedEntry` factory in [src/test/fixtures.ts](src/test/fixtures.ts) (config:
-[vitest.config.mts](vitest.config.mts), which maps the `@/` alias). Add a test when changing
-those files — especially the dip / baseline / scoring thresholds.
+Tests cover the pure logic only: `src/lib/{stats,detective,search}.test.ts` and
+`scripts/restore-plan.test.mjs`, with a `DecryptedEntry` factory in [src/test/fixtures.ts](src/test/fixtures.ts)
+(config: [vitest.config.mts](vitest.config.mts), which maps the `@/` alias). Add a test when changing
+those files — especially the dip / baseline / scoring / lag-effect thresholds.
 
 **Stale CSS in dev:** after editing theme tokens in `globals.css`, Turbopack's persistent cache
 (`.next/dev/cache`) can keep serving the old CSS even across restarts (new `--*` tokens and
@@ -66,7 +66,7 @@ src/
                     edit-entry-dialog, delete-entry-button, date-picker
     dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
                     stat-tiles (Mood/Energy/Flow tiles) · year-heatmap (daily calendar) ·
-                    insights (weekday / success / tag / sleep cards)
+                    insights (weekday / success / tag / sleep / ripple-effect cards)
     detective/      now-card (dip status + look-back start) · feeling-card (own words + signal lists) ·
                     mood-strip (weekly bars) · sources-card (ranked logs / one week) · people-card ·
                     dips-card · year-ago-card
@@ -82,8 +82,9 @@ src/
                     activities.ts (activity icon registry, key slugs, lookup), search.ts (History
                     note search + highlight, word-start signal terms), stats.ts (pure Dashboard
                     computations), detective.ts (pure Detective computations),
-                    export.ts (CSV/JSON backup)
+                    export.ts (CSV/JSON backup), entry-draft.ts (unsaved New Entry draft in localStorage)
   types/            db.ts (shared domain types / DB contract)
+  app/manifest.ts   web app manifest (home-screen install); icons in public/icon-192.png · icon-512.png
 media/np_logo.png   app logo (imported via next/image static import in np-logo.tsx; source for the icons)
 .env              Supabase connection (gitignored)        .env.example  template
 CLAUDE.md         this file       AGENTS.md  Next.js 16 agent rules (imported above)
@@ -95,7 +96,9 @@ package.json · package-lock.json   dependencies          node_modules/  install
 ```
 
 `.next/` (build cache, gitignored) regenerates on `npm run dev`/`build` and is safe to delete.
-`public/` (static assets) is intentionally absent — recreate it only when you add static files.
+`public/` holds only the manifest icons (resized from `media/np_logo.png`, whose letters already sit
+inside the maskable safe zone, so icon-512 doubles as the maskable icon). Manifest URLs don't get the
+basePath automatically — `manifest.ts` prefixes `/np-app` itself for the Pages build.
 `import-comments.mjs` / `probe-decrypt.mjs` are local one-off Supabase scripts, gitignored on purpose
 (they hardcode the login email) — keep them out of the repo.
 
@@ -128,8 +131,13 @@ by pure functions in [src/lib/stats.ts](src/lib/stats.ts) (no extra queries). A 
 (7D / 30D / 90D / 1Y / All, default 7D) scopes all of it. Top to bottom: Mood / Energy / Flow
 average tiles (delta vs. the previous period of the same length + sparkline) → the chart card
 (toggles: Mood / Energy / Flow lines, Success markers, per-metric moving-average "Trend" lines with a
-7/30/90d window, zoom) → the selected log → the year heatmap → Insights (weekday rhythm, wins vs. misses, and
-activities / people / sleep / markers cards that only appear when the range has that data). Data quirks the code relies on: metrics can be decimals or numeric strings
+7/30/90d window, zoom) → the selected log → the year heatmap → Insights (weekday rhythm, wins vs. misses,
+activities / people / sleep / markers cards that only appear when the range has that data, and the full-width
+"Ripple effects" card). Ripple effects (`lagFactors` / `laggedEffects` in stats.ts): for every sleep level,
+win/miss, activity, person and marker seen on ≥ 3 days in the range, the daily mean of the picked metric on
+those days, the next day and 2 days on, minus all other days; a Welch t (`compareDays`) below `RELIABLE_T`
+(2) shows the number faded as "could be chance". Rows sort by the clearest next-day effect; top 8, then
+"Show all". Range-scoped like the other cards, so short ranges mostly show "–". Data quirks the code relies on: metrics can be decimals or numeric strings
 (`num()` coerces), ~640 old logs have no metrics at all (excluded from the chart via
 `buildPoints`), and Flow only exists since mid-2025. The chart
 ([trend-chart.tsx](src/components/dashboard/trend-chart.tsx)) is a hand-built SVG, one column per
@@ -183,6 +191,10 @@ leftover height up to `max-h-32`, then `justify-between` spreads the rest into t
 open picker closes.
 
 New Entry behaviour:
+- **Unsaved drafts survive a reload** ([src/lib/entry-draft.ts](src/lib/entry-draft.ts)): the whole form
+  is written to localStorage (`np.entry-draft`) on every change once anything beyond the carried-over
+  sliders is set, and cleared on save, on "Discard" (in the "Unsaved draft restored" toast shown when a
+  draft is loaded) and on sign-out — the note sits there in plain text until then.
 - **Sliders carry over** from the most recent log (any day) via `useLatestMetrics`; the form shows a
   spinner until that resolves so sliders don't jump from the defaults (6). After saving, sliders keep
   the saved values; success resets to 0, sleep to `null`, activities to `[]`, note to `""`.
@@ -313,3 +325,16 @@ created). Repo secrets: `NP_EMAIL`, `NP_PASSWORD`, `SUPABASE_URL`, `SUPABASE_ANO
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (get the last one once with
 [scripts/google-auth.mjs](scripts/google-auth.mjs)). The Google OAuth consent screen must be **In production**
 — in "Testing" the refresh token expires after 7 days. Changing the app password means updating `NP_PASSWORD`.
+Backup and restore share the Supabase sign-in + full-history loader in [scripts/np-history.mjs](scripts/np-history.mjs).
+
+**Restore** — [scripts/restore-from-backup.mjs](scripts/restore-from-backup.mjs)
+(`node --env-file=.env.backup scripts/restore-from-backup.mjs np-diary-backup.json [--apply] [--limit N] [--include-removed]`):
+dry run by default; compares the backup with the app and, with `--apply`, recreates the missing logs —
+`save-entry` (so the note is encrypted by the app's own function), then a direct update of metrics,
+success, sleep and the original `created_at`, then the tag rows; missing activities/people/markers are
+created hidden. Logs get new ids; existing logs are never modified; logs marked `removed_from_app` are
+skipped unless asked. Re-runs are safe: logs restored earlier are matched by date + exact `created_at` +
+metrics + note (`fingerprint` in [scripts/restore-plan.mjs](scripts/restore-plan.mjs), the pure tested part),
+a log that fails halfway is deleted again, and the run ends by reloading the history and checking every
+restored log against the backup. Note: `np_entries` has an n8n `AFTER INSERT` trigger (`pg_notify` of the
+row) that fires once per restored log.

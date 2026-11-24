@@ -14,11 +14,16 @@ import {
   METRICS,
   METRIC_MAX,
   METRIC_MIN,
+  LAGS,
+  RELIABLE_T,
   WEEKDAYS,
   activityStats,
+  dailyMetric,
   dailyMood,
   fmt1,
   fmtSigned,
+  lagFactors,
+  laggedEffects,
   markerStats,
   metricsBySuccess,
   peopleStats,
@@ -26,6 +31,8 @@ import {
   summarize,
   weekdayRhythm,
   type ChartPoint,
+  type DayComparison,
+  type LagFactor,
   type MetricKey,
   type TagStat,
 } from "@/lib/stats";
@@ -366,6 +373,114 @@ function SleepImpact({ entries, points }: { entries: DecryptedEntry[]; points: C
   );
 }
 
+const LAG_LABELS = ["Same day", "Next day", "2 days on"];
+const LAG_ROWS = 8;
+
+function LagCell({ cell, lag }: { cell: DayComparison | null; lag: number }) {
+  if (!cell) return <span className="w-16 text-center text-xs text-muted-foreground">–</span>;
+  const reliable = Math.abs(cell.t) >= RELIABLE_T;
+  const flat = Math.abs(cell.delta) < 0.05;
+  const when = lag === 0 ? "on those days" : lag === 1 ? "the day after" : `${lag} days after`;
+  return (
+    <span
+      title={`${fmtSigned(cell.delta)} ${when} vs. other days (${cell.n} days)${reliable ? "" : " · could be chance"}`}
+      className={cn(
+        "w-16 rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums",
+        !reliable || flat
+          ? "text-muted-foreground"
+          : cell.delta > 0
+            ? "bg-success/10 font-semibold text-success"
+            : "bg-destructive/10 font-semibold text-destructive"
+      )}
+    >
+      {flat ? "±0.0" : fmtSigned(cell.delta)}
+    </span>
+  );
+}
+
+/**
+ * Does a night's sleep, a win/miss, an activity, a person or a marker still show a day or two
+ * later? Each row compares the daily average on the factor's days (shifted by the lag) with all
+ * other days; differences that could easily be chance are shown faded.
+ */
+function LagEffects({
+  entries,
+  points,
+  describe,
+}: {
+  entries: DecryptedEntry[];
+  points: ChartPoint[];
+  describe: (f: LagFactor) => { name: string; icon: React.ReactNode };
+}) {
+  const [metric, setMetric] = useState<MetricKey>("mood");
+  const [showAll, setShowAll] = useState(false);
+  const m = METRICS.find((x) => x.key === metric)!;
+  const factors = useMemo(() => lagFactors(entries), [entries]);
+  const daily = useMemo(() => dailyMetric(points, metric), [points, metric]);
+  const rows = useMemo(() => laggedEffects(daily, factors), [daily, factors]);
+  if (factors.length === 0) return null;
+  const shown = showAll ? rows : rows.slice(0, LAG_ROWS);
+
+  return (
+    <InsightCard
+      className="sm:col-span-2"
+      title="Ripple effects"
+      description={`Your ${m.label.toLowerCase()} on the day and the days after, vs. other days`}
+      action={<MetricTabs value={metric} onChange={setMetric} />}
+    >
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Nothing repeats often enough in this range yet — pick 90D or longer.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="flex-1" />
+            {LAGS.map((lag) => (
+              <span key={lag} className="w-16 text-center">
+                {LAG_LABELS[lag]}
+              </span>
+            ))}
+          </div>
+          <ul className="flex flex-col divide-y divide-border/70">
+            {shown.map((r) => {
+              const { name, icon } = describe(r.factor);
+              return (
+                <li key={`${r.factor.kind}:${r.factor.key}`} className="flex items-center gap-1 py-2">
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      {icon}
+                    </span>
+                    <span className="truncate text-sm font-medium">{name}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{r.factor.days.size}d</span>
+                  </span>
+                  {r.cells.map((c, i) => (
+                    <LagCell key={i} cell={c} lag={LAGS[i]} />
+                  ))}
+                </li>
+              );
+            })}
+          </ul>
+          {rows.length > LAG_ROWS && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-1 self-start text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              {showAll ? "Show fewer" : `Show all ${rows.length}`}
+            </button>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Faded numbers could be chance. Moods carry over from day to day, so a strong same-day
+            difference often echoes into the next day.
+            {daily.size < 30 && ` Only ${daily.size} days in this range — 90D or longer gives steadier results.`}
+          </p>
+        </div>
+      )}
+    </InsightCard>
+  );
+}
+
 export function Insights({
   entries,
   points,
@@ -387,6 +502,26 @@ export function Insights({
   const personName = (id: number) => people?.find((p) => p.id === id)?.name ?? "Someone";
   const markerName = (id: number) => markers?.find((m) => m.id === id)?.name ?? "Marker";
   const hasSleep = entries.some((e) => e.sleep_quality);
+  const describeFactor = (f: LagFactor): { name: string; icon: React.ReactNode } => {
+    switch (f.kind) {
+      case "sleep": {
+        const o = SLEEP_OPTIONS[f.key as 1 | 2 | 3];
+        return { name: `${o.label} night`, icon: <o.Icon className={cn("size-4", o.text)} /> };
+      }
+      case "success":
+        return f.key === 1
+          ? { name: "Success", icon: <Check className="size-4 text-success" /> }
+          : { name: "Not success", icon: <X className="size-4 text-destructive" /> };
+      case "activity": {
+        const { label, Icon } = activityInfo(String(f.key));
+        return { name: label, icon: <Icon className="size-4" /> };
+      }
+      case "person":
+        return { name: personName(Number(f.key)), icon: <User className="size-4" /> };
+      case "marker":
+        return { name: markerName(Number(f.key)), icon: <Tag className="size-4" /> };
+    }
+  };
   const nothingTagged = !hasSleep && activities.length === 0 && peopleRows.length === 0 && markerRows.length === 0;
 
   return (
@@ -429,6 +564,7 @@ export function Insights({
           />
         </InsightCard>
       )}
+      <LagEffects entries={entries} points={points} describe={describeFactor} />
       {nothingTagged && (
         <Card className="flex items-start gap-3 border-dashed bg-card/60 p-4 shadow-none sm:col-span-2">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">

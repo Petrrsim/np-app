@@ -9,121 +9,13 @@
 // Env: NP_EMAIL, NP_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, BACKUP_PASSPHRASE,
 //      GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN  (refresh token: scripts/google-auth.mjs)
 // Optional: DRIVE_FOLDER (default "NP Diary backups").
-import { createClient } from "@supabase/supabase-js";
 import { toRecord } from "../src/lib/export.ts";
 import { decrypt, deriveKey, encrypt, makeCheck, newKdf, verifyKey } from "./backup-crypto.mjs";
+import { connect, env, loadHistory } from "./np-history.mjs";
 
-const env = (name, fallback) => {
-  const v = process.env[name] ?? fallback;
-  if (v === undefined || v === "") throw new Error(`Missing env var ${name}`);
-  return v;
-};
-
-const PAGE = 1000; // decrypt-entries caps `limit` at 1000
-// decrypt-entries sorts by date/time only, and ~1k imported logs share both, so tied rows can swap
-// across a page boundary (one returned twice, its twin never). Overlapping pages cover that.
-const STRIDE = 900;
 const FOLDER = env("DRIVE_FOLDER", "NP Diary backups");
 const FILE = "np-diary-backup.json";
 const PASSPHRASE = env("BACKUP_PASSPHRASE");
-
-// ---------- Supabase ----------
-
-const supabase = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
-
-async function decryptPage(offset) {
-  const { data, error } = await supabase.functions.invoke("decrypt-entries", {
-    body: { limit: PAGE, offset },
-  });
-  if (error) {
-    const detail = await error.context?.text?.().catch(() => "");
-    throw new Error(`decrypt-entries (offset ${offset}): ${detail || error.message}`);
-  }
-  return data?.entries ?? [];
-}
-
-/** Pages through a direct RLS-scoped table read. */
-async function readAll(table, columns, orderBy) {
-  const rows = [];
-  for (let from = 0; ; from += PAGE) {
-    let q = supabase.from(table).select(columns);
-    for (const col of orderBy) q = q.order(col, { nullsFirst: false });
-    const { data, error } = await q.range(from, from + PAGE - 1);
-    if (error) throw new Error(`${table}: ${error.message}`);
-    rows.push(...data);
-    if (data.length < PAGE) return rows;
-  }
-}
-
-function groupBy(rows, key, map) {
-  const out = new Map();
-  for (const r of rows) {
-    const list = out.get(r[key]) ?? [];
-    list.push(map(r));
-    out.set(r[key], list);
-  }
-  return out;
-}
-
-async function loadHistory() {
-  const { error: authErr } = await supabase.auth.signInWithPassword({
-    email: env("NP_EMAIL"),
-    password: env("NP_PASSWORD"),
-  });
-  if (authErr) throw new Error(`Sign-in failed: ${authErr.message}`);
-
-  const { count, error } = await supabase.from("np_entries").select("id", { count: "exact", head: true });
-  if (error) throw new Error(`count: ${error.message}`);
-
-  const pages = Math.max(1, Math.ceil((count ?? 0) / STRIDE));
-  const [decrypted, sleepRows, actRows, peopleRows, markerRows, activities, people, markers] =
-    await Promise.all([
-      Promise.all(Array.from({ length: pages }, (_, i) => decryptPage(i * STRIDE))),
-      readAll("np_entries", "id, sleep_quality", ["id"]),
-      readAll("np_entry_activities", "entry_id, activity, feeling", ["id"]),
-      readAll("np_entry_people", "entry_id, person_id, np", ["entry_id", "created_at", "person_id"]),
-      readAll("np_entry_markers", "entry_id, marker_id", ["entry_id", "marker_id"]),
-      readAll("np_activities", "key, label", ["id"]),
-      readAll("np_people", "id, name", ["id"]),
-      readAll("np_markers", "id, name", ["id"]),
-    ]);
-
-  const sleep = new Map(sleepRows.map((r) => [r.id, r.sleep_quality]));
-  const acts = groupBy(actRows, "entry_id", (r) => ({ activity: r.activity, feeling: r.feeling }));
-  const ppl = groupBy(peopleRows, "entry_id", (r) => ({ person_id: r.person_id, np: r.np }));
-  const mks = groupBy(markerRows, "entry_id", (r) => r.marker_id);
-
-  const byId = new Map();
-  for (const e of decrypted.flat()) {
-    byId.set(e.id, {
-      ...e,
-      comment: e.comment ?? "",
-      sleep_quality: sleep.get(e.id) ?? null,
-      activities: acts.get(e.id) ?? [],
-      people: ppl.get(e.id) ?? [],
-      markers: mks.get(e.id) ?? [],
-    });
-  }
-  const entries = [...byId.values()];
-
-  // Never upload a partial backup: every row in the table must have come back decrypted.
-  const missing = sleepRows.filter((r) => !byId.has(r.id)).map((r) => r.id);
-  if (entries.length === 0 || missing.length > 0) {
-    throw new Error(`Incomplete history: ${missing.length} of ${sleepRows.length} logs not decrypted (ids ${missing.slice(0, 20).join(", ")})`);
-  }
-
-  const label = new Map(activities.map((a) => [a.key, a.label]));
-  const person = new Map(people.map((p) => [p.id, p.name]));
-  const marker = new Map(markers.map((m) => [m.id, m.name]));
-  const names = {
-    activity: (key) => label.get(key) ?? key,
-    person: (id) => person.get(id) ?? `#${id}`,
-    marker: (id) => marker.get(id) ?? `#${id}`,
-  };
-  return { entries, names };
-}
 
 // ---------- Google Drive (drive.file scope: only sees files this script created) ----------
 
@@ -259,7 +151,7 @@ function merge(previous, entries, names, today) {
 
 // ---------- main ----------
 
-const { entries, names } = await loadHistory();
+const { entries, names } = await loadHistory(await connect());
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
 
 accessToken = await googleToken();

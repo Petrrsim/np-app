@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { format } from "date-fns";
+import { useEffect, useRef, useState } from "react";
+import { format, isToday } from "date-fns";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntryFields, ENTRY_DEFAULTS, type EntryFieldsValue } from "@/components/entry-fields";
 import { firstUnrated, toEntryActivities } from "@/components/activity-picker";
 import { useActivityLookup } from "@/hooks/use-lists";
+import { clearEntryDraft, isDraftWorthKeeping, loadEntryDraft, saveEntryDraft } from "@/lib/entry-draft";
 import { firstUnratedPerson, toEntryPeople } from "@/components/people-picker";
 import {
   useCreateEntry,
@@ -49,9 +50,37 @@ export function EntryForm() {
 }
 
 function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; todayKey: string }) {
-  const [fields, setFields] = useState<EntryFieldsValue>(initial);
+  // An unsaved draft (e.g. the tab was reloaded mid-note) wins over the fresh form.
+  const [restored] = useState(loadEntryDraft);
+  const [fields, setFields] = useState<EntryFieldsValue>(() => restored?.fields ?? initial);
+  // What "untouched" means for the draft: the carried-over sliders, updated after each save.
+  const baseline = useRef(initial);
   // Bumped after each save so the optional sections (Activities, People, Markers) fold back up.
   const [formKey, setFormKey] = useState(0);
+
+  useEffect(() => {
+    if (isDraftWorthKeeping(fields, baseline.current)) saveEntryDraft(fields);
+    else clearEntryDraft();
+  }, [fields]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const at = new Date(restored.savedAt);
+    const when = isToday(at) ? format(at, "HH:mm") : format(at, "EEE d MMM, HH:mm");
+    const id = toast("Unsaved draft restored", {
+      description: `From ${when}`,
+      duration: 8000,
+      action: {
+        label: "Discard",
+        onClick: () => {
+          clearEntryDraft();
+          setFields(baseline.current);
+          setFormKey((k) => k + 1);
+        },
+      },
+    });
+    return () => void toast.dismiss(id);
+  }, [restored]);
   const create = useCreateEntry();
   const { data: sleepLoggedToday } = useSleepLoggedOn(todayKey);
   const { data: people } = usePeople();
@@ -78,7 +107,9 @@ function EntryFormBody({ initial, todayKey }: { initial: EntryFieldsValue; today
       toast.success("Entry saved");
       // The log just saved is now the "previous log", so keep its slider values.
       const { mood, energy, flow } = fields;
-      setFields(freshFields({ mood, energy, flow }));
+      baseline.current = freshFields({ mood, energy, flow });
+      clearEntryDraft();
+      setFields(baseline.current);
       setFormKey((k) => k + 1);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save entry");

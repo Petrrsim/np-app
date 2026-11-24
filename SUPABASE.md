@@ -30,13 +30,13 @@ detectSessionInUrl: true } })`. Auth is Supabase Auth (email). The typed contrac
 | `energy`            | number \| null               | metric slider |
 | `flow`              | number \| null               | metric slider |
 | `success_step`      | `-1 \| 0 \| 1` \| null       | literal union, NOT a free number |
-| `tiredness`         | number \| null               | metric slider |
-| `comment`           | string \| null               | plaintext — normally null in the table |
 | `comment_encrypted` | string \| null               | ciphertext; the real note is stored here |
 | `sleep_quality`     | smallint \| null (check 1–3) | optional: 1 poor · 2 fine · 3 good; null = not logged on this entry (added 2026-11-13) |
-| `keyword`           | string \| null               | hashtag/keyword |
-| `metadata`          | jsonb (`Record<string,unknown>`) \| null | |
-| `created_at`        | timestamptz (string)         | |
+| `created_at`        | timestamptz (string)         | default `now()`; updatable by the user (restore sets it back) |
+
+Checked 2026-11-24: the table has **only** these columns — `tiredness`, `comment`, `keyword` and
+`metadata` (still in `NpEntry` in src/types/db.ts) don't exist as columns; `decrypt-entries` supplies
+`comment`. An n8n `AFTER INSERT` trigger does `pg_notify` with each new row.
 
 **Encryption invariant:** notes are encrypted server-side. The client never reads
 `comment` from the table directly — it always goes through the `decrypt-entries` edge

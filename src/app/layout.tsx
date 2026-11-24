@@ -17,6 +17,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "NP App",
   description: "Personal daily mood, energy, flow & success diary.",
+  // Home-screen app on iOS: full screen, short name under the icon (icon = app/apple-icon.png).
+  appleWebApp: { capable: true, title: "NP", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
