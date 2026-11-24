@@ -284,6 +284,14 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
 - **Domain:** https://np.pt-solutions.tech — DNS `CNAME np → cname.vercel-dns.com`. The app runs at the
   domain root (no `basePath`); Supabase Auth's Site URL points there.
 - Run `npm run build` before pushing — a failed Vercel build leaves the previous deployment live.
+- **GitHub Pages (second copy):** [.github/workflows/pages.yml](.github/workflows/pages.yml) also deploys
+  every push to `main` to https://petrrsim.github.io/np-app/ (the repo is public for this). It builds with
+  `GITHUB_PAGES=true`, which makes [next.config.ts](next.config.ts) do a static export (`out/`) with
+  `basePath: "/np-app"`, `trailingSlash` and unoptimized images; Vercel builds without the flag. So keep the
+  app static-exportable — no route handlers, proxy/middleware, server actions, `cookies()`, rewrites or
+  dynamic routes without `generateStaticParams` — and use `next/link` / `useRouter` (never hardcoded
+  `/...` URLs in `<a>` or `window.location`) so links get the base path. Check with
+  `GITHUB_PAGES=true npm run build`. Supabase env comes from the `SUPABASE_URL` / `SUPABASE_ANON_KEY` repo secrets.
 
 ## Scheduled backup (Google Drive)
 
