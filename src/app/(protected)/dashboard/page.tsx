@@ -210,12 +210,15 @@ export default function DashboardPage() {
               )
             )}
 
-            <YearHeatmap points={allPoints} entries={sorted} />
-
             <h2 className="mt-4 px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Insights
             </h2>
             <Insights entries={view.rangeEntries} points={view.points} people={people} markers={markers} />
+
+            {/* Ignores the range picker (own year stepper), so it sits apart at the bottom. */}
+            <div className="mt-4">
+              <YearHeatmap points={allPoints} entries={sorted} />
+            </div>
           </div>
         )
       )}

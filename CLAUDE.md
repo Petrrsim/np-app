@@ -131,9 +131,9 @@ by pure functions in [src/lib/stats.ts](src/lib/stats.ts) (no extra queries). A 
 (7D / 30D / 90D / 1Y / All, default 7D) scopes all of it. Top to bottom: Mood / Energy / Flow
 average tiles (delta vs. the previous period of the same length + sparkline) → the chart card
 (toggles: Mood / Energy / Flow lines, Success markers, per-metric moving-average "Trend" lines with a
-7/30/90d window, zoom) → the selected log → the year heatmap → Insights (weekday rhythm, wins vs. misses,
+7/30/90d window, zoom) → the selected log → Insights (weekday rhythm, wins vs. misses,
 activities / people / sleep / markers cards that only appear when the range has that data, and the full-width
-"Ripple effects" card). Ripple effects (`lagFactors` / `laggedEffects` in stats.ts): for every sleep level,
+"Ripple effects" card) → the year heatmap at the very bottom. Ripple effects (`lagFactors` / `laggedEffects` in stats.ts): for every sleep level,
 win/miss, activity, person and marker seen on ≥ 3 days in the range, the daily mean of the picked metric on
 those days, the next day and 2 days on, minus all other days; a Welch t (`compareDays`) below `RELIABLE_T`
 (2) shows the number faded as "could be chance". Rows sort by the clearest next-day effect; top 8, then
