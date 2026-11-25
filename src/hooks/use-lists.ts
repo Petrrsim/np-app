@@ -2,16 +2,20 @@ import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { activityKeyFor, makeActivityLookup } from "@/lib/activities";
-import { ACTIVITIES_KEY, ENTRIES_KEY, MARKERS_KEY, PEOPLE_KEY } from "@/hooks/use-entries";
+import { ACTIVITIES_KEY, ENTRIES_KEY, GROUPS_KEY, LINKS_KEY, MARKERS_KEY, PEOPLE_KEY } from "@/hooks/use-entries";
 import type { ActivityType } from "@/types/db";
 
-/** The three user-managed lists edited on the Settings page. */
-export type ListKind = "activities" | "people" | "markers";
+/**
+ * The user-managed lists: activities and markers (Settings), people (People page). Person
+ * groups are here only for `useReorderList` — their edits and deletes live in use-people.ts.
+ */
+export type ListKind = "activities" | "people" | "markers" | "groups";
 
 const LISTS = {
   activities: { table: "np_activities", nameCol: "label", key: ACTIVITIES_KEY, noun: "Activity" },
   people: { table: "np_people", nameCol: "name", key: PEOPLE_KEY, noun: "Person" },
   markers: { table: "np_markers", nameCol: "name", key: MARKERS_KEY, noun: "Marker" },
+  groups: { table: "np_person_groups", nameCol: "name", key: GROUPS_KEY, noun: "Group" },
 } as const;
 
 function duplicateError(kind: ListKind, name: string) {
@@ -101,6 +105,7 @@ export function useUpdateListItem(kind: ListKind) {
 /**
  * Permanently deletes a list item and removes it from every log. People/markers go via
  * `on delete cascade`; activities are linked by key (no FK), so their log rows are deleted first.
+ * A person's group memberships and connections cascade too.
  */
 export function useDeleteListItem(kind: ListKind) {
   const qc = useQueryClient();
@@ -118,6 +123,10 @@ export function useDeleteListItem(kind: ListKind) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: key });
       void qc.invalidateQueries({ queryKey: ENTRIES_KEY });
+      if (kind === "people") {
+        void qc.invalidateQueries({ queryKey: GROUPS_KEY });
+        void qc.invalidateQueries({ queryKey: LINKS_KEY });
+      }
     },
   });
 }

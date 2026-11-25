@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { Activity, Tag, User } from "lucide-react";
-import { useCreateMarker, useCreatePerson, useEntries, useMarkers, usePeople } from "@/hooks/use-entries";
+import Link from "next/link";
+import { Activity, ChevronRight, Tag, Users } from "lucide-react";
+import { useCreateMarker, useEntries, useMarkers, usePeople } from "@/hooks/use-entries";
 import { useActivities, useCreateActivity } from "@/hooks/use-lists";
 import { ListManager } from "@/components/settings/list-manager";
 import { DataCard } from "@/components/settings/data-card";
 import { AccountCard } from "@/components/settings/account-card";
+import { Card } from "@/components/ui/card";
 
 export default function SettingsPage() {
   const { data: entries } = useEntries();
@@ -14,22 +16,19 @@ export default function SettingsPage() {
   const people = usePeople();
   const markers = useMarkers();
   const createActivity = useCreateActivity();
-  const createPerson = useCreatePerson();
   const createMarker = useCreateMarker();
 
   // How many logs use each item, from the cached history (null until it's loaded).
   const counts = useMemo(() => {
     if (!entries) return null;
     const byKey = new Map<string, number>();
-    const byPerson = new Map<number, number>();
     const byMarker = new Map<number, number>();
     const bump = <K,>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1);
     for (const e of entries) {
       for (const a of e.activities) bump(byKey, a.activity);
-      for (const p of e.people) bump(byPerson, p.person_id);
       for (const id of e.markers) bump(byMarker, id);
     }
-    return { byKey, byPerson, byMarker };
+    return { byKey, byMarker };
   }, [entries]);
 
   const activityCounts = useMemo(() => {
@@ -71,21 +70,6 @@ export default function SettingsPage() {
           }}
         />
         <ListManager
-          kind="people"
-          title="People"
-          description="People you log with their NP (life energy): Low / OK / Great."
-          noun="person"
-          placeholder="New person"
-          Icon={User}
-          items={people.data}
-          isPending={people.isPending}
-          isError={people.isError}
-          counts={counts?.byPerson ?? null}
-          onAdd={async (name) => {
-            await createPerson.mutateAsync(name);
-          }}
-        />
-        <ListManager
           kind="markers"
           title="Markers"
           description="Tags for logs, filterable in History."
@@ -100,6 +84,22 @@ export default function SettingsPage() {
             await createMarker.mutateAsync(name);
           }}
         />
+
+        {/* People are managed on their own page (notes, groups, connections). */}
+        <Card className="transition-colors hover:bg-accent/40">
+          <Link href="/people" className="flex items-center gap-3 p-5">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <Users className="size-4" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-base font-semibold">People</span>
+              <span className="text-sm text-muted-foreground">
+                {people.data ? `${people.data.length} people · ` : ""}add, group and connect them on the People page
+              </span>
+            </span>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
+        </Card>
 
         <h2 className="mt-4 px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           General

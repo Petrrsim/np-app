@@ -37,8 +37,45 @@ export interface Person {
   name: string;
   /** Hidden = kept on past logs but not offered in the New Entry / Edit form. */
   hidden: boolean;
-  /** Manual order (Settings ↑/↓); null = not placed yet, sorts last. */
+  /** Manual order (People page "Arrange"); null = not placed yet, sorts last. */
   position: number | null;
+  /** Free-text "about this person" note from the People page (plain text, RLS-protected); "" = none. */
+  note: string;
+  /** When `note` was last saved (ISO timestamp); null = never written. */
+  note_updated_at: string | null;
+  /** Your own energy with them: -1 draining · 0 neutral · 1 energizing; null = not set. */
+  vibe: LinkTone | null;
+}
+
+/**
+ * A row of `np_person_groups` with its member ids merged in from `np_person_group_members`.
+ * Groups nest (any depth): a group's people are its own `members` plus everyone in its subgroups.
+ */
+export interface PersonGroup {
+  id: number;
+  name: string;
+  /** Key of GROUP_COLORS in src/lib/people.ts (unknown keys fall back to the first colour). */
+  color: string;
+  /** Order among its siblings. */
+  position: number | null;
+  /** The group it sits inside; null = top level. The DB rejects loops. */
+  parent_id: number | null;
+  /** Direct members only (see `GroupTree.allMembers`). */
+  members: number[];
+}
+
+/** A connection's feeling: -1 negative · 0 neutral · 1 positive. */
+export type LinkTone = -1 | 0 | 1;
+
+/** A row of `np_person_links`: an undirected, named connection; always `person_a < person_b`. */
+export interface PersonLink {
+  id: number;
+  person_a: number;
+  person_b: number;
+  tone: LinkTone;
+  /** Optional short description, e.g. "strong and prosperous partnership"; "" = none. */
+  label: string;
+  updated_at: string;
 }
 
 /** A row of `np_entry_people` (minus entry/user ids). */

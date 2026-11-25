@@ -54,13 +54,13 @@ export function MarkerPicker({
   );
 }
 
-/** Shown in a picker when its list has nothing to offer: points to Settings. */
-export function EmptyHint({ noun }: { noun: string }) {
+/** Shown in a picker when its list has nothing to offer: points to where the list is managed. */
+export function EmptyHint({ noun, href = "/settings", page = "Settings" }: { noun: string; href?: string; page?: string }) {
   return (
     <p className="text-xs text-muted-foreground">
       No {noun} yet — add them in{" "}
-      <Link href="/settings" className="font-medium text-foreground underline underline-offset-2">
-        Settings
+      <Link href={href} className="font-medium text-foreground underline underline-offset-2">
+        {page}
       </Link>
       .
     </p>

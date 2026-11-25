@@ -1,10 +1,13 @@
 "use client";
 
-import { BatteryFull, BatteryLow, BatteryMedium, Loader2, User, X } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { BatteryFull, BatteryLow, BatteryMedium, ChevronDown, ChevronUp, Loader2, User, X } from "lucide-react";
 import type { EntryPerson, Person, PersonNp } from "@/types/db";
 import { cn } from "@/lib/utils";
 import { LevelTiles, type LevelOption } from "@/components/level-tiles";
-import { usePeople } from "@/hooks/use-entries";
+import { useEntries, usePeople } from "@/hooks/use-entries";
+import { rankByUse } from "@/lib/people";
+import { todayDay } from "@/lib/stats";
 import { EmptyHint } from "@/components/marker-picker";
 
 /** A person's NP (life energy). Reuses the feeling scale colours: rose → amber → teal. */
@@ -67,8 +70,10 @@ export function toEntryPeople(drafts: PersonDraft[]): EntryPerson[] {
 }
 
 /**
- * Optional people: toggle any number of the user's people (the list is managed in Settings),
+ * Optional people: toggle any number of the user's people (the list is managed on the People page),
  * then rate each picked person's NP (life energy, 1–3). Picked people keep their pick order.
+ * Chips are ordered by use (`rankByUse`) and folded to two rows behind "+N more" — picked people
+ * always show in their rating cards below, even when their chip is folded away.
  */
 export function PeoplePicker({
   value,
@@ -78,7 +83,35 @@ export function PeoplePicker({
   onChange: (value: PersonDraft[]) => void;
 }) {
   const { data: people, isPending } = usePeople();
+  const { data: entries } = useEntries();
   const npOf = new Map(value.map((p) => [p.person_id, p.np]));
+  const today = todayDay();
+  const ranked = useMemo(() => rankByUse(people ?? [], entries, today), [people, entries, today]);
+  const chips = ranked.filter((p) => !p.hidden || npOf.has(p.id));
+  const chipKey = chips.map((p) => p.id).join(",");
+
+  // Two rows of chips, the rest behind "+N more". Rows are measured, since chip widths vary.
+  const box = useRef<HTMLDivElement>(null);
+  const [fold, setFold] = useState<{ height: number; hidden: number }>({ height: 0, hidden: 0 });
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => {
+      const kids = [...el.children] as HTMLElement[];
+      const tops = [...new Set(kids.map((c) => c.offsetTop))].sort((a, b) => a - b);
+      if (tops.length <= 2) {
+        setFold({ height: 0, hidden: 0 });
+        return;
+      }
+      // Up to just above row 3 (keeps the glow of rated chips in row 2 visible).
+      setFold({ height: tops[2] - 4, hidden: kids.filter((c) => c.offsetTop >= tops[2]).length });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [chipKey]);
   const nameOf = (id: number) => people?.find((p) => p.id === id)?.name ?? "…";
 
   function toggle(id: number) {
@@ -91,10 +124,14 @@ export function PeoplePicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {isPending && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-        {people && !people.some((p) => !p.hidden || npOf.has(p.id)) && <EmptyHint noun="people" />}
-        {people?.filter((p) => !p.hidden || npOf.has(p.id)).map((p) => {
+      {isPending && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+      {people && chips.length === 0 && <EmptyHint noun="people" href="/people" page="People" />}
+      <div
+        ref={box}
+        className="relative flex flex-wrap items-center gap-2 overflow-hidden"
+        style={fold.hidden > 0 && !open ? { maxHeight: fold.height } : undefined}
+      >
+        {chips.map((p) => {
           const on = npOf.has(p.id);
           const np = npOf.get(p.id) ?? null;
           const o = np ? NP_OPTIONS[np] : null;
@@ -117,6 +154,26 @@ export function PeoplePicker({
           );
         })}
       </div>
+      {fold.hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className="flex items-center gap-1 self-start rounded-md px-1 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {open ? (
+            <>
+              Show less
+              <ChevronUp className="size-3.5" />
+            </>
+          ) : (
+            <>
+              +{fold.hidden} more
+              <ChevronDown className="size-3.5" />
+            </>
+          )}
+        </button>
+      )}
 
       {value.map(({ person_id, np }) => {
         const label = nameOf(person_id);

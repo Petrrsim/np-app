@@ -27,6 +27,9 @@
   --color-chart-mood: var(--chart-mood);
   --color-chart-energy: var(--chart-energy);
   --color-chart-flow: var(--chart-flow);
+  --color-tie-positive: var(--tie-positive);
+  --color-tie-neutral: var(--tie-neutral);
+  --color-tie-negative: var(--tie-negative);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -84,6 +87,12 @@
   --chart-energy: #eb6834;
   --chart-flow: #1baf7a;
 
+  /* People page connections: positive (green) · neutral (warm gray) · negative (red). Group
+     colours (src/lib/people.ts) avoid these two hues so a halo never reads as a feeling. */
+  --tie-positive: #16a34a;
+  --tie-neutral: #8f8d86;
+  --tie-negative: #dc2626;
+
   /* Year heatmap: diverging red (below your average) ↔ blue (above), neutral gray middle. */
   --heat-lo-3: #b8322b;
   --heat-lo-2: #e2786c;
@@ -112,6 +121,28 @@ body {
 
 ::selection {
   background: rgb(28 27 31 / 0.12);
+}
+
+/* People web: someone new pops in (inner <g>, so it never fights the dimming opacity). */
+@keyframes web-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.web-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: web-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .web-pop {
+    animation: none;
+  }
 }
 
 /* react-day-picker */

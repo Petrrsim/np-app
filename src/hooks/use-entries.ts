@@ -17,6 +17,11 @@ export const ENTRIES_KEY = ["entries"] as const;
 export const MARKERS_KEY = ["markers"] as const;
 export const PEOPLE_KEY = ["people"] as const;
 export const ACTIVITIES_KEY = ["activities"] as const;
+export const GROUPS_KEY = ["person-groups"] as const;
+export const LINKS_KEY = ["person-links"] as const;
+
+/** Columns of `np_people` the app reads (the list, pickers and the People page share them). */
+export const PERSON_COLUMNS = "id, name, hidden, position, note, note_updated_at, vibe";
 
 // decrypt-entries returns at most 1000 rows per call (20 if no limit is sent).
 const PAGE_SIZE = 1000;
@@ -465,31 +470,11 @@ export function usePeople() {
     queryFn: async (): Promise<Person[]> => {
       const { data, error } = await supabase
         .from("np_people")
-        .select("id, name, hidden, position")
+        .select(PERSON_COLUMNS)
         .order("position", { nullsFirst: false })
         .order("id");
       if (error) throw error;
       return data ?? [];
     },
-  });
-}
-
-export function useCreatePerson() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (name: string): Promise<Person> => {
-      const { data, error } = await supabase
-        .from("np_people")
-        .insert({ name: name.trim() })
-        .select("id, name, hidden, position")
-        .single();
-      if (error) {
-        // Unique (user_id, lower(name)) violation.
-        if (error.code === "23505") throw new Error(`"${name.trim()}" is already in your people`);
-        throw error;
-      }
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: PEOPLE_KEY }),
   });
 }

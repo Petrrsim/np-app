@@ -106,7 +106,57 @@ marker to belong to the user. Direct table access only, same pattern as activiti
 ### `np_people` — people close to the user (added 2026-11-13)
 
 Same shape and RLS as `np_markers` (`id` identity, `user_id`, `name` 1–40 chars trimmed and
-unique per user case-insensitively, `created_at`). Managed on the Settings page.
+unique per user case-insensitively, `created_at`, `hidden`, `position`). Managed on the People page.
+Since 2026-11-25 also `note text not null default ''` (≤ 20 000 chars — the People page's "about
+this person" note, **plain text**, RLS-protected) and `note_updated_at timestamptz` (set by the app
+on save). Migration: [supabase/migrations/20261125_people_page.sql](supabase/migrations/20261125_people_page.sql).
+Also `vibe smallint` (−1 draining · 0 neutral · 1 energizing; null = not set — the user's *own*
+energy with that person) and `vibe_note text not null default ''` (≤ 120 chars, trimmed — **unused**:
+the app dropped the free-text description; the column is left in place, empty). Migration:
+[supabase/migrations/20261125_person_vibe.sql](supabase/migrations/20261125_person_vibe.sql).
+
+### `np_person_groups` — named groups of people (added 2026-11-25)
+
+| column       | type                                   | notes |
+| ------------ | -------------------------------------- | ----- |
+| `id`         | bigint identity                        | PK |
+| `user_id`    | uuid → `auth.users.id`                 | defaults to `auth.uid()` |
+| `name`       | text (1–40 chars, trimmed)             | unique per user case-insensitively |
+| `color`      | text (`^[a-z]{1,20}$`), default indigo | key of `GROUP_COLORS` in src/lib/people.ts |
+| `position`   | integer, nullable                      | order among siblings; nulls last, then `id` |
+| `parent_id`  | bigint → `np_person_groups.id`, nullable | the group it sits inside (any depth); `on delete set null`; check ≠ `id` |
+| `created_at` | timestamptz                            | |
+
+Trigger `np_person_groups_no_cycle` (before insert/update of `parent_id`) rejects a parent that
+isn't one of the same user's groups (SQLSTATE 23503) and loops (23514). RLS: plain owner check for
+select/insert/update/delete. **Don't put a subquery on `np_person_groups` inside its own policies**
+— Postgres fails every insert with "infinite recursion detected in policy" (that's what the first
+nesting migration did; checks like that belong in the trigger). The app moves a deleted group's
+subgroups up to its parent first. Migrations:
+[20261125_person_group_nesting.sql](supabase/migrations/20261125_person_group_nesting.sql), then
+[20261125_person_group_policy_fix.sql](supabase/migrations/20261125_person_group_policy_fix.sql).
+
+### `np_person_group_members` — who is (directly) in which group (added 2026-11-25)
+
+`group_id` → `np_person_groups` and `person_id` → `np_people` (both `on delete cascade`),
+`user_id`, `created_at`; PK `(group_id, person_id)`. RLS: select/delete own rows; insert requires
+both the group and the person to belong to the user. Members of subgroups are not copied here —
+the app rolls them up.
+
+### `np_person_links` — connections between two people (added 2026-11-25)
+
+| column       | type                         | notes |
+| ------------ | ---------------------------- | ----- |
+| `id`         | bigint identity              | PK |
+| `user_id`    | uuid → `auth.users.id`       | defaults to `auth.uid()` |
+| `person_a`   | bigint → `np_people.id`      | `on delete cascade`; always the smaller id (check `person_a < person_b`) |
+| `person_b`   | bigint → `np_people.id`      | `on delete cascade` |
+| `tone`       | smallint (−1…1)              | −1 negative · 0 neutral · 1 positive |
+| `label`      | text (≤ 80, trimmed), default '' | optional name, e.g. "strong and prosperous partnership" |
+| `created_at` / `updated_at` | timestamptz   | `updated_at` set by the app |
+
+`unique (person_a, person_b)` — one connection per pair (the app upserts on it). RLS: select/delete
+own rows; insert/update require both people to belong to the user.
 
 ### `np_entry_people` — people in a log, with their NP (added 2026-11-13)
 
@@ -188,5 +238,5 @@ Consequences / rules:
 
 1. All entry **reads/writes** go through the edge functions above — never read
    `np_entries.comment` or write `comment_encrypted` directly.
-2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_activities`, `np_entry_activities`, `np_markers`, `np_entry_markers`, `np_people`, `np_entry_people`, entry deletion) may use direct table access.
+2. Non-sensitive data (`np_profiles`, `sleep_quality`, `np_activities`, `np_entry_activities`, `np_markers`, `np_entry_markers`, `np_people`, `np_entry_people`, `np_person_groups`, `np_person_group_members`, `np_person_links`, entry deletion) may use direct table access. Person notes (`np_people.note`) also go direct and are stored as plain text — the only free text that isn't encrypted at rest.
 3. Keep `entry_date` formatted as `yyyy-MM-dd`.

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Status:** Rebuilt from scratch on 2026-06-03 (Next.js). The previous Vite SPA was deleted; the
 > Supabase backend (data + edge functions) was preserved and is documented in
-> [SUPABASE.md](SUPABASE.md). Single-user personal diary — five screens (New Entry, History, Dashboard, Detective, Settings) + login.
+> [SUPABASE.md](SUPABASE.md). Single-user personal diary — six screens (New Entry, History, Dashboard, People, Detective, Settings) + login.
 
 ## Skills
 
@@ -23,10 +23,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `npm test` — run the Vitest suite once (`npm run test:watch` to keep it running).
 
-Tests cover the pure logic only: `src/lib/{stats,detective,search}.test.ts` and
+Tests cover the pure logic only: `src/lib/{stats,detective,search,people}.test.ts` and
 `scripts/restore-plan.test.mjs`, with a `DecryptedEntry` factory in [src/test/fixtures.ts](src/test/fixtures.ts)
 (config: [vitest.config.mts](vitest.config.mts), which maps the `@/` alias). Add a test when changing
-those files — especially the dip / baseline / scoring / lag-effect thresholds.
+those files — especially the dip / baseline / scoring / lag-effect thresholds and the People web
+layout / group tree.
+
+**Seeing a UI change:** every app page is behind login. For a visual check, add a *temporary* route
+outside `(protected)` that renders the page inside its own `QueryClientProvider` with the query keys
+(`PEOPLE_KEY`, `ENTRIES_KEY`, …) pre-seeded with fake data (seed in a `useEffect` to avoid a hydration
+mismatch), screenshot it at 360 / 390 px and desktop, then delete the route — never commit it.
 
 **Stale CSS in dev:** after editing theme tokens in `globals.css`, Turbopack's persistent cache
 (`.next/dev/cache`) can keep serving the old CSS even across restarts (new `--*` tokens and
@@ -56,7 +62,7 @@ src/
     privacy/page.tsx                           public privacy policy (needed by the Google OAuth consent screen)
     (protected)/                               route group behind <AuthGate> + <AppHeader>
       layout.tsx · page.tsx (New Entry, "/") · history/page.tsx · dashboard/page.tsx ·
-      detective/page.tsx · settings/page.tsx
+      people/page.tsx · detective/page.tsx · settings/page.tsx
   components/
     ui/             shadcn-style primitives (button, card, input, textarea, slider, dialog,
                     alert-dialog, popover, sonner)
@@ -67,21 +73,29 @@ src/
     dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
                     stat-tiles (Mood/Energy/Flow tiles) · year-heatmap (daily calendar) ·
                     insights (weekday / success / tag / sleep / ripple-effect cards)
+    people/         people-web (SVG "web" of people, connections, group halos) · groups-section (nested
+                    group cards + group editor) · people-list ("Everyone", search, Arrange) · person-sheet
+                    (profile dialog: stats, note, groups, connections, hide/delete) · add-person-dialog ·
+                    group-chip · person-avatar · tone (connection tone pill / tiles / legend)
     detective/      now-card (dip status + look-back start) · feeling-card (own words + signal lists) ·
                     mood-strip (weekly bars) · sources-card (ranked logs / one week) · people-card ·
                     dips-card · year-ago-card
-    settings/       list-manager (add/rename/icon/hide/delete for one list) · data-card (CSV/JSON
+    settings/       list-manager (add/rename/icon/hide/delete for activities / markers) · data-card (CSV/JSON
                     export) · account-card (email, change password, sign out)
   contexts/         auth-context.tsx (useAuth)
   hooks/            use-stored-state.ts (localStorage-backed useState for per-browser UI prefs)
                     use-entries.ts (list/create/update/delete incl. activities, people, markers,
                     latest metrics, sleep-logged-on; usePeople/useMarkers lists + create)
                     use-lists.ts (useActivities/useActivityLookup/useCreateActivity; generic
-                    useUpdateListItem/useDeleteListItem/useReorderList for all three lists)
+                    useUpdateListItem/useDeleteListItem/useReorderList for activities/people/markers,
+                    reorder also for person groups)
+                    use-people.ts (People page: groups, connections, notes, create person;
+                    usePeopleModel = everything the page shows, with lookups)
   lib/              supabase.ts (browser client), edge.ts (edge wrappers), utils.ts (cn),
                     activities.ts (activity icon registry, key slugs, lookup), search.ts (History
                     note search + highlight, word-start signal terms), stats.ts (pure Dashboard
-                    computations), detective.ts (pure Detective computations),
+                    computations), detective.ts (pure Detective computations), people.ts (pure People
+                    page logic: group colours + tree, connection tones, person stats, web layout),
                     export.ts (CSV/JSON backup), entry-draft.ts (unsaved New Entry draft in localStorage)
   types/            db.ts (shared domain types / DB contract)
   app/manifest.ts   web app manifest (home-screen install); icons in public/icon-192.png · icon-512.png
@@ -209,15 +223,19 @@ New Entry behaviour:
   labels/icons via `useActivityLookup()` (unknown keys fall back to the key + a generic icon).
 - **People are optional per log, any number** — like activities (pick chips, then rate each
   person's NP with Low/OK/Great tiles; saving is blocked until all are rated), but the list lives
-  in the DB like markers (`np_people`, via `usePeople`; added in Settings). Stored in
+  in the DB like markers (`np_people`, via `usePeople`; added on the People page). Stored in
   `np_entry_people` (merged into `DecryptedEntry.people`); resets to `[]` after saving. Colours reuse the `--feel-*` tokens; battery icons.
+  The chips are ordered by use (`rankByUse` in people.ts: most logged in the last 90 days, then
+  overall, then saved order) and folded to **two rows** (measured, since chip widths vary) behind
+  "+N more" / "Show less"; picked people always show in their rating cards below.
 - **Markers are optional per log, any number** — toggle chips ([marker-picker.tsx](src/components/marker-picker.tsx)).
   The list lives in the DB (`np_markers`, via `useMarkers`; added in Settings). Entries reference
   markers by id (`DecryptedEntry.markers: number[]`, from `np_entry_markers`). Markers reset to `[]` after saving.
 
 Settings (`/settings`, gear icon in the header — sign out lives here now): one card each for
-Activities, People and Markers (add, ↑/↓ reorder, rename, change icon for activities, hide/show,
-delete) plus Data (CSV/JSON export of the full decrypted history) and Account (change password, sign out).
+Activities and Markers (add, ↑/↓ reorder, rename, change icon for activities, hide/show,
+delete), a link card to the People page (people are managed there), plus Data (CSV/JSON export of
+the full decrypted history) and Account (change password, sign out).
 **Hidden** (`hidden` column on all three tables) = stays on past logs, History filters and the
 Dashboard, but isn't offered in the New Entry / Edit pickers — unless already on the log being
 edited. **Delete** is permanent and removes the item from every log (people/markers cascade;
@@ -225,9 +243,52 @@ activities have no FK, so `useDeleteListItem` deletes their `np_entry_activities
 the confirm dialog shows the usage count and offers "Hide instead". Usage counts come from the
 cached `useEntries` history.
 **Order**: all three lists sort by `position` (nulls last), then `id` — the pickers, History
-filters and Settings all follow it. `useReorderList` writes only the rows whose position changed
+filters, Settings and the People page all follow it. `useReorderList` writes only the rows whose position changed
 and reorders the cache optimistically; new items start with `position` null (= end of the list).
-In Settings, hidden items sit below the visible ones and only move within their group.
+In Settings (and the People page's "Arrange"), hidden items sit below the visible ones and only
+move within their group.
+
+People (`/people`, between Dashboard and Detective; icon on phones): where people are added and
+managed (no longer in Settings). Top to bottom: **Your web** — an SVG constellation
+([people-web.tsx](src/components/people/people-web.tsx)): one disc per person (initials, tinted with
+their first direct group's colour), connections as lines in their tone's colour (`--tie-positive /
+--tie-neutral / --tie-negative`, dashed = neutral), groups as soft translucent halos (a hull path
+stroked as wide as the halo). The layout is `layoutWeb` in [src/lib/people.ts](src/lib/people.ts): a
+deterministic force-directed layout (same data → same picture, no randomness) where positive ties
+pull closer than negative ones (`TONE_PULL`) and group members cluster, then fitted to the card
+and de-overlapped; data changes glide people to their new spots (`useTween`). Tapping a person
+focuses them (others fade, their connection names show as pills where they fit), tapping again or
+"Open" opens their profile; tapping a line shows that connection. **Groups** — cards per top-level
+group with subgroups nested inside (any depth), direct members as chips, "+ subgroup" and edit on
+each card, plus a "Not in a group" bucket; the group editor sets name, colour, "Inside" (parent),
+members, sibling order and delete. Colours: `GROUP_COLORS` — 32, shown as a 4×8 grid, all ≥ 3.4:1 on
+white and picked to be maximally distinct; no green / emerald / red / rose (those mean connection
+tones). Keys are stored in the DB, so never rename or remove one; new groups get the next unused key
+in `AUTO_ORDER` (consecutive colours far apart).
+**Everyone** — the full list (note preview, groups, logs, latest NP) with search over names, notes
+and groups and an "Arrange" mode (↑/↓ = the New Entry picker order). The **profile** dialog
+([person-sheet.tsx](src/components/people/person-sheet.tsx), opened from anywhere; tapping a
+connected person opens them with a back link) has rename, log stats from the cached history (logs,
+last seen, average NP, NP on recent logs), the **note** (autosaves ~1 s after typing stops, on blur
+and on close; serialized via mutation `scope`, optimistic cache update), **your own energy** with them
+(`np_people.vibe`: Energizing / Neutral / Draining, `VIBE_LABELS`, same colours as connection tones;
+tap the picked tile again to clear; no free text — by the user's choice), group chips (with parent
+path; dashed = in it through a subgroup; tapping adds them directly), connections (pick a person,
+Negative / Neutral / Positive, optional name ≤ 80 chars; one connection per pair), and hide / delete
+(delete also removes their note, memberships and connections).
+**Groups nest**: `np_person_groups.parent_id`; a group's people = its direct members + everyone in
+its subgroups (`buildGroupTree().allMembers`, which also breaks bad loops/missing parents
+defensively — the DB already rejects loops with a trigger). Deleting a group moves its subgroups up
+into its parent (`useDeleteGroup`) and keeps its people. On the web an outer group's halo is
+`NEST` px wider per level of subgroups, so nested groups read as rings within rings; group names are
+placed by `groupLabelSpot` (above / below / beside a member, wherever they don't cover a person, a
+name or another group's name) and sized by depth (top-level 11px, then 9.5px, then 8.5px);
+top-level names sit `TOP_LABEL_GAP` px further out, just clear of their halo.
+**Your energy on the web** is only a ring around each rated person in the vibe colour (energizing
+glows; the same ring is on `PersonAvatar` via its `vibe` prop, in the list and profile). There's
+deliberately no "You" node or you→person lines — the user is connected to everyone, so that adds noise.
+The app header has five tabs: on phones (< `sm`) Dashboard, People and Detective show as icons —
+check the nav still ends before the settings button at 360 px when adding anything there.
 
 UI style: success, sleep and activity feeling are 3-tile pickers sharing one look — lucide icon,
 tinted gradient + glow when selected, and a 3-segment bar (sleep/feeling = level meter, success =
@@ -236,7 +297,8 @@ its card a tinted border/wash in the feeling colour; unrated picks stay neutral.
 Light "paper & ink" theme (warm off-white page, white cards with `shadow-card`, near-black
 primary matching the logo); scale colours use 600–700 shades so they read as text on white.
 Colours are theme tokens in `globals.css` (`--success`, `--destructive`, `--sleep-poor/fine/good`,
-`--feel-rough/ok/great`). Sleep and activity feeling both render through `LevelTiles` /
+`--feel-rough/ok/great`, `--tie-positive/neutral/negative` for People connections and your energy;
+SVG uses them as `var(--tie-x, #hex)` with fallbacks, like the chart colours). Sleep and activity feeling both render through `LevelTiles` /
 `LevelBars` in `level-tiles.tsx`. `SuccessBadge` / `SleepBadge` / `ActivityBadge` (exported from
 the picker files) render the History card badges.
 
@@ -258,7 +320,11 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
    after `save-entry`, delete-dropped + upsert on edit, merged into `DecryptedEntry.activities`).
    People (`np_entry_people`, with `np`) and markers work the same way; markers via `np_entry_markers` (merged into `DecryptedEntry.markers`); the
    marker list itself is `np_markers` under its own query key `MARKERS_KEY`, the people list is
-   `np_people` under `PEOPLE_KEY`, and the activity list is `np_activities` under `ACTIVITIES_KEY`.
+   `np_people` under `PEOPLE_KEY` (columns in `PERSON_COLUMNS`, incl. the People-page note), and the
+   activity list is `np_activities` under `ACTIVITIES_KEY`. The People page adds `np_person_groups` +
+   `np_person_group_members` (one query, `GROUPS_KEY`) and `np_person_links` (`LINKS_KEY`) — all
+   direct access. Person notes are **plain text** in `np_people.note` (RLS-protected, not encrypted
+   like log notes — the edge functions can't be changed, see SUPABASE.md).
 
 ### State
 
@@ -275,6 +341,8 @@ The backend contract is documented in full in [SUPABASE.md](SUPABASE.md). Two pa
 ### Conventions
 
 - Path alias `@/*` → `src/*` ([tsconfig.json](tsconfig.json)). Prefer `@/...` over relative `../../` imports.
+- Toast errors with `errorMessage(err, fallback)` from `@/lib/utils` — Supabase query errors are plain
+  objects, not `Error`s, so `err instanceof Error ? … : fallback` hides the real reason.
 - Shared domain types live in [src/types/db.ts](src/types/db.ts). Invariants: `SuccessStep` is the literal
   union `-1 | 0 | 1`; `SleepQuality` is `1 | 2 | 3` and always nullable (`sleep_quality` column,
   `smallint` with a 1–3 check; `null` = not logged); `ActivityFeeling` is `1 | 2 | 3` and never null
