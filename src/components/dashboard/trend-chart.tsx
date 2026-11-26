@@ -13,6 +13,8 @@ import {
   type MetricKey,
 } from "@/lib/stats";
 import { loggedTime } from "@/components/entry-card";
+import { SLEEP_OPTIONS } from "@/components/sleep-picker";
+import type { SleepQuality } from "@/types/db";
 import { cn } from "@/lib/utils";
 
 // Geometry (px). The plot, the success lane and the x-axis are one fixed-height block.
@@ -21,14 +23,22 @@ const TOP = 14;
 const PLOT_H = 220;
 const PLOT_BOTTOM = TOP + PLOT_H;
 const LANE_Y = PLOT_BOTTOM + 18;
-const AXIS_TOP = PLOT_BOTTOM + 32;
-const HEIGHT = AXIS_TOP + 34;
+/** Sleep lane, between the success lane and the x-axis; collapses when it has nothing to show. */
+const SLEEP_Y = LANE_Y + 20;
+const SLEEP_LANE_H = 20;
+const AXIS_TOP_BASE = PLOT_BOTTOM + 32;
 const RIGHT_PAD = 14;
 /** Columns rendered beyond each edge of the viewport, so lines enter/leave smoothly. */
 const OVERSCAN = 40;
 /** Lines break (and a gap marker shows) when consecutive logs are further apart than this. */
 const GAP_DAYS = 10;
 const Y_TICKS = [2, 4, 6, 8, 10, 12];
+/** Hex fallbacks keep the marks visible if a stale dev CSS cache lacks the tokens. */
+const SLEEP_COLOR: Record<SleepQuality, string> = {
+  1: "var(--sleep-poor, #e11d48)",
+  2: "var(--sleep-fine, #c2620a)",
+  3: "var(--sleep-good, #4f46e5)",
+};
 
 const y = (v: number) => TOP + ((METRIC_MAX - v) / (METRIC_MAX - METRIC_MIN)) * PLOT_H;
 
@@ -40,6 +50,7 @@ export interface TrendChartProps {
   trend: Record<MetricKey, boolean>;
   trendDays: number;
   showSuccess: boolean;
+  showSleep: boolean;
   /** Minimum px per log; widened automatically when the logs don't fill the view. */
   zoom: number;
   selectedId: number | null;
@@ -55,6 +66,7 @@ export function TrendChart({
   trend,
   trendDays,
   showSuccess,
+  showSleep,
   zoom,
   selectedId,
   onSelect,
@@ -176,6 +188,28 @@ export function TrendChart({
     return { days, months };
   }, [points, step]);
 
+  // Sleep is a per-night thing: one mark per day (the day's first log that has it), centred
+  // over that day's columns.
+  const sleepDays = useMemo(() => {
+    const out: { day: number; first: number; last: number; sleep: SleepQuality }[] = [];
+    for (let first = 0; first < points.length; ) {
+      let last = first;
+      while (last + 1 < points.length && points[last + 1].day === points[first].day) last++;
+      let sleep: SleepQuality | null = null;
+      for (let i = first; i <= last && !sleep; i++) sleep = points[i].entry.sleep_quality ?? null;
+      if (sleep) out.push({ day: points[first].day, first, last, sleep });
+      first = last + 1;
+    }
+    return out;
+  }, [points]);
+  const sleepByDay = useMemo(() => new Map(sleepDays.map((d) => [d.day, d.sleep])), [sleepDays]);
+
+  const sleepOn = showSleep && sleepDays.length > 0;
+  const axisTop = AXIS_TOP_BASE + (sleepOn ? SLEEP_LANE_H : 0);
+  const height = axisTop + 34;
+  /** Bottom of the hover / selection band: covers the lanes, not the axis. */
+  const laneEnd = sleepOn ? SLEEP_Y + 9 : LANE_Y + 10;
+
   // ---- visible window ----------------------------------------------------------------
   const i0 = Math.max(0, Math.floor(scrollX / step) - OVERSCAN);
   const i1 = Math.min(n - 1, Math.ceil((scrollX + viewW) / step) + OVERSCAN);
@@ -232,7 +266,7 @@ export function TrendChart({
     <div className="relative select-none">
       <div className="flex">
         {/* Fixed y-axis */}
-        <svg width={AXIS_W} height={HEIGHT} className="shrink-0 overflow-visible" aria-hidden>
+        <svg width={AXIS_W} height={height} className="shrink-0 overflow-visible" aria-hidden>
           {Y_TICKS.map((t) => (
             <text
               key={t}
@@ -259,7 +293,7 @@ export function TrendChart({
           <div
             ref={content}
             className="relative cursor-crosshair"
-            style={{ width: contentW, height: HEIGHT }}
+            style={{ width: contentW, height }}
             onPointerMove={(e) => e.pointerType === "mouse" && setHover(indexAt(e.clientX))}
             onPointerLeave={() => setHover(null)}
             onClick={(e) => {
@@ -269,7 +303,7 @@ export function TrendChart({
           >
             <svg
               width={winW}
-              height={HEIGHT}
+              height={height}
               className="absolute top-0"
               style={{ left: winLeft }}
               aria-hidden
@@ -322,7 +356,7 @@ export function TrendChart({
                       x1={m.i * step}
                       x2={m.i * step}
                       y1={TOP}
-                      y2={HEIGHT - 4}
+                      y2={height - 4}
                       stroke="var(--input)"
                       shapeRendering="crispEdges"
                     />
@@ -454,6 +488,45 @@ export function TrendChart({
                     );
                   })}
 
+                {/* Sleep lane: the picker's moon icons when a day is wide enough, else a tiny
+                    level meter (1–3 px steps tall) so it still reads without colour */}
+                {sleepOn &&
+                  sleepDays
+                    .filter((d) => d.last >= i0 && d.first <= i1)
+                    .map((d) => {
+                      const o = SLEEP_OPTIONS[d.sleep];
+                      const color = SLEEP_COLOR[d.sleep];
+                      const w = (d.last - d.first + 1) * step;
+                      const cx = d.first * step + w / 2;
+                      if (step >= 15) {
+                        const size = 13;
+                        return (
+                          <o.Icon
+                            key={`z${d.day}`}
+                            x={cx - size / 2}
+                            y={SLEEP_Y - size / 2}
+                            width={size}
+                            height={size}
+                            color={color}
+                            strokeWidth={2.25}
+                          />
+                        );
+                      }
+                      const bw = Math.max(2, Math.min(4, w * 0.55));
+                      const bh = d.sleep * 3;
+                      return (
+                        <rect
+                          key={`z${d.day}`}
+                          x={cx - bw / 2}
+                          y={SLEEP_Y + 4.5 - bh}
+                          width={bw}
+                          height={bh}
+                          rx={Math.min(1, bw / 2)}
+                          fill={color}
+                        />
+                      );
+                    })}
+
                 {/* Hover crosshair */}
                 {hover !== null && hover !== selIdx && hover >= i0 && hover <= i1 && (
                   <g pointerEvents="none">
@@ -461,7 +534,7 @@ export function TrendChart({
                       x1={xOf(hover)}
                       x2={xOf(hover)}
                       y1={TOP}
-                      y2={LANE_Y + 10}
+                      y2={laneEnd}
                       stroke="var(--foreground)"
                       strokeOpacity={0.22}
                       shapeRendering="crispEdges"
@@ -477,7 +550,7 @@ export function TrendChart({
                       x={xOf(selIdx) - Math.max(6, step / 2)}
                       y={TOP}
                       width={Math.max(12, step)}
-                      height={LANE_Y + 10 - TOP}
+                      height={laneEnd - TOP}
                       rx={6}
                       fill="var(--foreground)"
                       opacity={0.05}
@@ -486,7 +559,7 @@ export function TrendChart({
                       x1={xOf(selIdx)}
                       x2={xOf(selIdx)}
                       y1={TOP}
-                      y2={LANE_Y + 10}
+                      y2={laneEnd}
                       stroke="var(--foreground)"
                       strokeOpacity={0.6}
                       shapeRendering="crispEdges"
@@ -502,7 +575,7 @@ export function TrendChart({
                     <text
                       key={`d${d.i}`}
                       x={xOf(d.i)}
-                      y={AXIS_TOP + 6}
+                      y={axisTop + 6}
                       textAnchor="middle"
                       className="fill-muted-foreground text-[10px] tabular-nums"
                     >
@@ -515,7 +588,7 @@ export function TrendChart({
                     <text
                       key={`ml${m.i}`}
                       x={m.i * step + 5}
-                      y={AXIS_TOP + 23}
+                      y={axisTop + 23}
                       className="fill-foreground text-[11px] font-semibold"
                     >
                       {m.text}
@@ -530,7 +603,7 @@ export function TrendChart({
       <div
         aria-hidden
         className="pointer-events-none absolute z-[1] bg-card pr-2 text-[11px] font-semibold leading-none text-foreground"
-        style={{ left: AXIS_W, top: AXIS_TOP + 14 }}
+        style={{ left: AXIS_W, top: axisTop + 14 }}
       >
         {stickyMonth}
       </div>
@@ -610,6 +683,17 @@ export function TrendChart({
               {tip.success === 1 ? "Success" : "Not success"}
             </div>
           )}
+          {(() => {
+            const s = sleepByDay.get(tip.day);
+            if (!s) return null;
+            const o = SLEEP_OPTIONS[s];
+            return (
+              <div className={cn("mt-2 flex items-center gap-1 border-t border-border pt-2 font-medium", o.text)}>
+                <o.Icon className="size-3.5" />
+                {o.label} sleep
+              </div>
+            );
+          })()}
           <div className="mt-2 text-[10px] text-muted-foreground">Click for details</div>
         </div>
       )}

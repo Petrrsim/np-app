@@ -159,7 +159,10 @@ log (not per day), horizontally scrollable with zoom levels; it **only renders t
 ± overscan** (the "All" range is ~4.3k columns), so keep it windowed. Lines break and show a gap
 pill when logs are > 10 days apart. Moving averages are trailing *calendar-day* windows
 (7/30/90d) computed over the full history, then sliced to the range. Success ±1 shows as a
-tinted column wash plus ✓/✗ (zoomed-out: ▲/▼) glyphs in a lane under the plot. Clicking a point
+tinted column wash plus ✓/✗ (zoomed-out: ▲/▼) glyphs in a lane under the plot. Below it, just above the date axis, a sleep lane shows one mark per
+*day* (the day's first log with sleep, centred over that day's columns): the sleep picker's moon icon
+when zoomed in (≥ 15 px per log), else a tiny level meter (3 / 6 / 9 px bar); "Sleep" toggle next to
+Success; the lane collapses when off or the range has no sleep. Clicking a point
 (or ←/→ on the focused chart) shows that log's `EntryCard` below the chart. The year heatmap
 ([year-heatmap.tsx](src/components/dashboard/year-heatmap.tsx)) ignores the range picker: its own
 year stepper + All/Mood/Energy/Flow picker (persisted), 12 Mon-first month grids, one cell per day

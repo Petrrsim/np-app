@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { Moon, ZoomIn, ZoomOut } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { TrendChart } from "@/components/dashboard/trend-chart";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,7 @@ export function TrendCard({
   const [visible, setVisible] = useState<Record<MetricKey, boolean>>({ mood: true, energy: true, flow: true });
   const [trend, setTrend] = useState<Record<MetricKey, boolean>>({ mood: false, energy: false, flow: false });
   const [showSuccess, setShowSuccess] = useState(true);
+  const [showSleep, setShowSleep] = useState(true);
   const [zoom, setZoom] = useState(2);
   const anyTrend = METRICS.some((m) => trend[m.key]);
 
@@ -121,6 +122,14 @@ export function TrendCard({
             </span>
             Success
           </Toggle>
+          <Toggle on={showSleep} onClick={() => setShowSleep((s) => !s)}>
+            <Moon
+              className={cn("size-3 text-sleep-good transition-opacity", !showSleep && "opacity-40")}
+              strokeWidth={2.5}
+              aria-hidden
+            />
+            Sleep
+          </Toggle>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -173,6 +182,7 @@ export function TrendCard({
         trend={trend}
         trendDays={trendDays}
         showSuccess={showSuccess}
+        showSleep={showSleep}
         zoom={ZOOMS[zoom]}
         selectedId={selectedId}
         onSelect={onSelect}
