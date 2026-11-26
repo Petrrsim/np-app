@@ -5,6 +5,7 @@ import { ArrowRight, X } from "lucide-react";
 import type { LinkTone } from "@/types/db";
 import type { PeopleModel } from "@/hooks/use-people";
 import { cn } from "@/lib/utils";
+import { useStoredState } from "@/hooks/use-stored-state";
 import {
   TONES,
   TONE_PULL,
@@ -19,6 +20,7 @@ import {
   tint,
   webHeight,
   type Box,
+  type GroupTree,
   type Point,
 } from "@/lib/people";
 import { Card } from "@/components/ui/card";
@@ -26,18 +28,56 @@ import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/people/person-avatar";
 import { ToneLegend, TonePill } from "@/components/people/tone";
 
-const NODE_R = 20;
-/** Group halos: a blob of this radius around each member, centred a bit low so names sit inside. */
-const HALO_R = 40;
-const HALO_DY = 6;
-/** Each level of subgroups inside a group widens its halo by this much (nested rings). */
-const NEST = 13;
-/** Name label baseline, below a person's centre. */
-const NAME_Y = NODE_R + 14;
-const GAP = { x: 80, y: 64 };
+/** Sizes of everything on the web: roomy on wide cards, tighter on phones (< `WIDE_MIN` px). */
+interface Dims {
+  /** Person disc radius. */
+  nodeR: number;
+  /** Group halos: a blob of this radius around each member, centred `haloDy` low so names sit inside. */
+  haloR: number;
+  haloDy: number;
+  /** Each level of subgroups inside a group widens its halo by this much (nested rings). */
+  nest: number;
+  /** Name label baseline, below a person's centre. */
+  nameY: number;
+  /** Minimum distance between two people (layout). */
+  gap: { x: number; y: number };
+  /** Free space around the layout, before nesting (halos, names, group labels). */
+  pad: { x: number; top: number; bottom: number };
+  nameFont: number;
+  initialsFont: number;
+  /** Names longer than this are cut with "…". */
+  nameMax: number;
+  /** Rough width of one name character (px) at `nameFont`, for collision checks. */
+  charW: number;
+}
+const WIDE: Dims = {
+  nodeR: 20,
+  haloR: 40,
+  haloDy: 6,
+  nest: 13,
+  nameY: 34,
+  gap: { x: 80, y: 64 },
+  pad: { x: 48, top: 52, bottom: 54 },
+  nameFont: 11,
+  initialsFont: 12,
+  nameMax: 14,
+  charW: 6.2,
+};
+const COMPACT: Dims = {
+  nodeR: 15,
+  haloR: 28,
+  haloDy: 5,
+  nest: 9,
+  nameY: 27,
+  gap: { x: 74, y: 54 },
+  pad: { x: 40, top: 38, bottom: 40 },
+  nameFont: 10,
+  initialsFont: 10,
+  nameMax: 13,
+  charW: 5.6,
+};
+const WIDE_MIN = 560;
 const TWEEN_MS = 520;
-/** Your energy with someone: a ring this far out from their disc. */
-const VIBE_R = NODE_R + 4.5;
 
 type Focus = { kind: "person"; id: number } | { kind: "link"; id: number } | null;
 
@@ -92,12 +132,12 @@ function haloPath(points: Point[]): string | null {
   );
 }
 
-function shortName(name: string) {
-  return name.length > 14 ? `${name.slice(0, 13).trimEnd()}…` : name;
+function shortName(name: string, max: number) {
+  return name.length > max ? `${name.slice(0, max - 1).trimEnd()}…` : name;
 }
 
 /** Rough text widths (px) for collision checks — Geist at these sizes. */
-const nameWidth = (name: string) => shortName(name).length * 6.2 + 4;
+const nameWidth = (name: string, d: Dims) => shortName(name, d.nameMax).length * d.charW + 4;
 const groupLabelWidth = (name: string, size: number) => name.length * size * 0.78 + 6;
 /** Group names shrink a step per nesting level: top-level 11px, subgroups 9.5px, deeper 8.5px. */
 const groupLabelSize = (depth: number) => Math.max(8.5, 11 - depth * 1.5);
@@ -111,7 +151,24 @@ const pillWidth = (label: string) => Math.min(160, label.length * 6.3 + 30);
  * their ties (with labels), tap again to open them.
  */
 export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: number) => void }) {
-  const { people, groups, links } = model;
+  const { tree } = model;
+  // Group filter: show one group (with its subgroups) on its own — a big web gets long.
+  const [storedFilter, setFilter] = useStoredState<number | null>("np.people.web-group", null);
+  const filter = storedFilter !== null && tree.group(storedFilter) ? storedFilter : null;
+  const { people, links, shownGroups } = useMemo(() => {
+    if (filter === null) return { people: model.people, links: model.links, shownGroups: tree.ordered };
+    const ids = new Set(tree.allMembers(filter));
+    const inside = new Set([filter, ...tree.descendants(filter)]);
+    const base = tree.ancestors(filter).length;
+    return {
+      people: model.people.filter((p) => ids.has(p.id)),
+      links: model.links.filter((l) => ids.has(l.person_a) && ids.has(l.person_b)),
+      // Depth relative to the shown group, so its name is sized like a top-level one.
+      shownGroups: tree.ordered
+        .filter(({ group }) => inside.has(group.id))
+        .map(({ group, depth }) => ({ group, depth: depth - base })),
+    };
+  }, [filter, model.people, model.links, tree]);
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [focus, setFocus] = useState<Focus>(null);
@@ -126,10 +183,17 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
     return () => ro.disconnect();
   }, []);
 
-  const { tree } = model;
+  const wide = width >= WIDE_MIN;
+  const d = wide ? WIDE : COMPACT;
+  const { nodeR, nameY } = d;
   // Deepest nesting: outer halos need room at the edges.
-  const nest = Math.max(0, ...tree.ordered.map(({ group }) => tree.height(group.id)));
-  const height = webHeight(people.length, width >= 560) + nest * NEST;
+  const nest = Math.max(0, ...shownGroups.map(({ group }) => tree.height(group.id)));
+  const extra = nest * d.nest + TOP_LABEL_GAP;
+  const pad = useMemo(
+    () => ({ x: d.pad.x + extra, top: d.pad.top + extra, bottom: d.pad.bottom + extra }),
+    [d, extra],
+  );
+  const height = webHeight(people.length, { width, pad, gap: d.gap });
   const target = useMemo(
     () =>
       width
@@ -137,18 +201,14 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
             ids: people.map((p) => p.id),
             links: links.map((l) => ({ a: l.person_a, b: l.person_b, w: TONE_PULL[l.tone] })),
             // Depth-first, each with everyone in its subgroups: nested groups cluster inside their parent.
-            groups: tree.ordered.map(({ group }) => tree.allMembers(group.id)),
+            groups: shownGroups.map(({ group }) => tree.allMembers(group.id)),
             width,
             height,
-            pad: {
-              x: 48 + nest * NEST + TOP_LABEL_GAP,
-              top: 52 + nest * NEST + TOP_LABEL_GAP,
-              bottom: 54 + nest * NEST + TOP_LABEL_GAP,
-            },
-            gap: GAP,
+            pad,
+            gap: d.gap,
           })
         : new Map<number, Point>(),
-    [people, links, tree, nest, width, height],
+    [people, links, shownGroups, tree, width, height, pad, d.gap],
   );
   const shown = useTween(target, width);
   const pos = (id: number) => shown.get(id) ?? target.get(id);
@@ -187,20 +247,20 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
   for (const person of people) {
     const p = pos(person.id);
     if (!p) continue;
-    discs.push({ x0: p.x - NODE_R, y0: p.y - NODE_R, x1: p.x + NODE_R, y1: p.y + NODE_R });
-    const w = nameWidth(person.name);
-    names.push({ x0: p.x - w / 2, y0: p.y + NAME_Y - 9, x1: p.x + w / 2, y1: p.y + NAME_Y + 3 });
+    discs.push({ x0: p.x - nodeR, y0: p.y - nodeR, x1: p.x + nodeR, y1: p.y + nodeR });
+    const w = nameWidth(person.name, d);
+    names.push({ x0: p.x - w / 2, y0: p.y + nameY - 9, x1: p.x + w / 2, y1: p.y + nameY + 3 });
   }
 
   // Halos: a group's blob covers everyone in it and its subgroups, wider per level of nesting.
-  const halos = tree.ordered.flatMap(({ group, depth }) => {
+  const halos = shownGroups.flatMap(({ group, depth }) => {
     const ids = tree.allMembers(group.id);
     const pts = ids.flatMap((id) => {
       const p = pos(id);
       return p ? [p] : [];
     });
     if (pts.length === 0) return [];
-    const blob = pts.map((p) => ({ x: p.x, y: p.y + HALO_DY }));
+    const blob = pts.map((p) => ({ x: p.x, y: p.y + d.haloDy }));
     const level = tree.height(group.id);
     const lit = active === null || ids.some((id) => neighbours.has(id));
     return [
@@ -209,7 +269,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
         pts,
         blob,
         path: haloPath(blob),
-        r: HALO_R + level * NEST,
+        r: d.haloR + level * d.nest,
         level,
         size: groupLabelSize(depth),
         depth,
@@ -225,9 +285,9 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
     .sort((a, b) => a.level - b.level)
     .map((h) => {
       const spot = groupLabelSpot(h.pts, [...discs, ...names, ...placed], groupLabelWidth(h.g.name, h.size), {
-        nodeR: NODE_R,
-        nameY: NAME_Y,
-        lift: h.level * NEST + (h.depth === 0 ? TOP_LABEL_GAP : 0),
+        nodeR,
+        nameY,
+        lift: h.level * d.nest + (h.depth === 0 ? TOP_LABEL_GAP : 0),
         bounds: { x0: 2, y0: 2, x1: width - 2, y1: height - 2 },
       });
       // Keep the next group's name a clear step away, so two labels never read as one.
@@ -276,13 +336,26 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
             <h2 className="text-sm font-semibold">Your web</h2>
           </div>
           <p className="text-xs text-muted-foreground">
-            {people.length} {people.length === 1 ? "person" : "people"} · {links.length}{" "}
-            {links.length === 1 ? "connection" : "connections"}
-            {groups.length > 0 && ` · ${groups.length} ${groups.length === 1 ? "group" : "groups"}`}
+            {filter !== null && `${people.length} of `}
+            {model.people.length} {model.people.length === 1 && filter === null ? "person" : "people"} ·{" "}
+            {links.length} {links.length === 1 ? "connection" : "connections"}
+            {shownGroups.length > 0 &&
+              ` · ${shownGroups.length} ${shownGroups.length === 1 ? "group" : "groups"}`}
           </p>
         </div>
         <ToneLegend className="pt-0.5" ring={anyVibe} />
       </div>
+
+      {model.groups.length > 0 && (
+        <WebFilter
+          tree={tree}
+          value={filter}
+          onChange={(id) => {
+            setFocus(null);
+            setFilter(id);
+          }}
+        />
+      )}
 
       <div
         ref={box}
@@ -384,7 +457,8 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
               const selected = focusPerson === person.id;
               const lit = isLit(person.id);
               const vibe = person.vibe;
-              const pulse = vibe !== null ? NODE_R + 8 : NODE_R + 4;
+              const pulse = vibe !== null ? nodeR + 8 : nodeR + 4;
+              const vibeR = nodeR + 4.5;
               return (
                 <g
                   key={person.id}
@@ -411,7 +485,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                     >
                       <circle
                         className="ring opacity-0 transition-opacity"
-                        r={NODE_R + 5}
+                        r={nodeR + 5}
                         fill="none"
                         stroke="#1c1b1f"
                         strokeOpacity={0.35}
@@ -419,7 +493,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                       />
                       {selected && (
                         <circle
-                          r={NODE_R + 6}
+                          r={nodeR + 6}
                           fill="none"
                           stroke={hex ?? "#1c1b1f"}
                           strokeOpacity={0.45}
@@ -438,7 +512,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                         <>
                           {vibe === 1 && (
                             <circle
-                              r={VIBE_R}
+                              r={vibeR}
                               fill="none"
                               stroke={TONES[1].color}
                               strokeOpacity={0.2}
@@ -446,7 +520,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                             />
                           )}
                           <circle
-                            r={VIBE_R}
+                            r={vibeR}
                             fill="none"
                             stroke={TONES[vibe].color}
                             strokeWidth={vibe === 0 ? 1.5 : 2.25}
@@ -457,7 +531,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                         </>
                       )}
                       <circle
-                        r={NODE_R}
+                        r={nodeR}
                         fill={hex ? tint(hex, 0.13) : "#ffffff"}
                         stroke={hex ? tint(hex, 0.55) : "#d6d4ce"}
                         strokeWidth={selected ? 2 : 1.25}
@@ -468,17 +542,24 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                         dy="0.36em"
                         textAnchor="middle"
                         fill={hex ?? "#3a393e"}
-                        className="pointer-events-none text-[12px] font-semibold tracking-tight"
+                        className="pointer-events-none font-semibold tracking-tight"
+                        style={{ fontSize: d.initialsFont }}
                       >
                         {initials(person.name)}
                       </text>
                       <text
-                        y={NAME_Y}
+                        y={nameY}
                         textAnchor="middle"
-                        className="pointer-events-none fill-foreground text-[11px] font-medium"
-                        style={{ paintOrder: "stroke", stroke: "#ffffff", strokeWidth: 3.5, strokeLinejoin: "round" }}
+                        className="pointer-events-none fill-foreground font-medium"
+                        style={{
+                          fontSize: d.nameFont,
+                          paintOrder: "stroke",
+                          stroke: "#ffffff",
+                          strokeWidth: 3.5,
+                          strokeLinejoin: "round",
+                        }}
                       >
-                        {shortName(person.name)}
+                        {shortName(person.name, d.nameMax)}
                       </text>
                     </g>
                   </g>
@@ -559,12 +640,87 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
           </>
         ) : (
           <p className={cn("text-xs text-muted-foreground")}>
-            {links.length === 0 && groups.length === 0
+            {model.links.length === 0 && model.groups.length === 0
               ? "Open someone to connect them with others or put them in a group — your web grows here."
               : "Tap a person to light up their connections · tap again to open them."}
           </p>
         )}
       </div>
     </Card>
+  );
+}
+
+const FILTER_CHIP =
+  "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-200 active:scale-[0.97]";
+
+/**
+ * "Show": All, or one group with its subgroups. Top-level groups always show; a picked group's
+ * subgroups appear right after it (and its parents' while one of theirs is picked), so the row
+ * stays short however many groups there are. One scrollable row on phones, wrapping on wider cards.
+ */
+function WebFilter({
+  tree,
+  value,
+  onChange,
+}: {
+  tree: GroupTree;
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  const open = new Set(value === null ? [] : [value, ...tree.ancestors(value)]);
+  const chips = tree.ordered.filter(({ group }) => {
+    const parent = tree.parentOf(group.id);
+    return parent === null || open.has(parent);
+  });
+  return (
+    <div
+      role="group"
+      aria-label="Show on the web"
+      className="mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden"
+    >
+      <button
+        type="button"
+        aria-pressed={value === null}
+        onClick={() => onChange(null)}
+        className={cn(
+          FILTER_CHIP,
+          value === null
+            ? "border-foreground/30 bg-foreground text-background"
+            : "border-border bg-card text-muted-foreground hover:bg-accent",
+        )}
+      >
+        Everyone
+      </button>
+      {chips.map(({ group, depth }) => {
+        const hex = groupHex(group.color);
+        const on = value === group.id;
+        return (
+          <button
+            key={group.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(on ? null : group.id)}
+            className={cn(
+              FILTER_CHIP,
+              on ? "" : "border-border bg-card text-muted-foreground hover:bg-accent",
+            )}
+            style={
+              on
+                ? {
+                    borderColor: `color-mix(in srgb, ${hex} 45%, transparent)`,
+                    background: `color-mix(in srgb, ${hex} 10%, white)`,
+                    color: hex,
+                  }
+                : undefined
+            }
+          >
+            {depth > 0 && <span className="-mr-0.5 opacity-50">{"›".repeat(depth)}</span>}
+            <span className="size-2 shrink-0 rounded-full" style={{ background: hex }} />
+            {group.name}
+            <span className="tabular-nums opacity-60">{tree.allMembers(group.id).length}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

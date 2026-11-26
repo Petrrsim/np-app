@@ -15,6 +15,7 @@ import {
   groupLabelSpot,
   initials,
   layoutWeb,
+  webHeight,
   nextGroupColor,
   orderPair,
   tint,
@@ -369,5 +370,69 @@ describe("layoutWeb", () => {
   it("ignores links to people who aren't on the web", () => {
     const pos = layoutWeb({ ...base, ids: [1, 2], links: [{ a: 1, b: 99 }], groups: [[2, 99]] });
     expect(pos.size).toBe(2);
+  });
+});
+
+describe("webHeight", () => {
+  const phone = { width: 328, pad: { x: 57, top: 55, bottom: 57 }, gap: { x: 74, y: 54 } };
+  const laptop = { width: 736, pad: { x: 69, top: 73, bottom: 75 }, gap: { x: 80, y: 64 } };
+
+  it("never goes below the minimum", () => {
+    expect(webHeight(0, phone)).toBe(280);
+    expect(webHeight(3, laptop)).toBe(280);
+  });
+
+  it("grows with the number of people instead of packing them tighter", () => {
+    for (const fit of [phone, laptop]) {
+      const h = [20, 45, 90, 180].map((n) => webHeight(n, fit));
+      for (let i = 1; i < h.length; i++) expect(h[i]).toBeGreaterThan(h[i - 1]);
+    }
+    // Twice the people ≈ twice the inner height (a constant density), not a fixed cap.
+    const inner = (n: number, fit: typeof phone) => webHeight(n, fit) - fit.pad.top - fit.pad.bottom;
+    expect(inner(180, laptop) / inner(90, laptop)).toBeGreaterThan(1.8);
+  });
+
+  it("makes a narrow card taller than a wide one for the same people", () => {
+    expect(webHeight(45, phone)).toBeGreaterThan(webHeight(45, laptop));
+  });
+});
+
+describe("layoutWeb in a tall box (phones)", () => {
+  const n = 40;
+  const ids = Array.from({ length: n }, (_, i) => i + 1);
+  const gap = { x: 74, y: 54 };
+  const pad = { x: 50, top: 40, bottom: 40 };
+  const width = 330;
+  const height = webHeight(n, { width, pad, gap });
+  const pos = layoutWeb({
+    ids,
+    links: [],
+    groups: [ids.slice(0, 15), ids.slice(15, 25), ids.slice(25, 33)],
+    width,
+    height,
+    pad,
+    gap,
+  });
+  const pts = [...pos.values()];
+
+  it("uses the height: spread out vertically, not a blob in the middle", () => {
+    const ys = pts.map((p) => p.y);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan((height - pad.top - pad.bottom) * 0.8);
+  });
+
+  it("keeps everyone in the box and apart", () => {
+    for (const p of pts) {
+      expect(p.x).toBeGreaterThanOrEqual(pad.x);
+      expect(p.x).toBeLessThanOrEqual(width - pad.x);
+      expect(p.y).toBeGreaterThanOrEqual(pad.top);
+      expect(p.y).toBeLessThanOrEqual(height - pad.bottom);
+    }
+    let crowded = 0;
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        if (Math.hypot((pts[i].x - pts[j].x) / gap.x, (pts[i].y - pts[j].y) / gap.y) < 0.97) crowded++;
+      }
+    }
+    expect(crowded).toBe(0);
   });
 });

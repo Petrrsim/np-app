@@ -481,11 +481,14 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
   const order = ids.map((id, i) => ({ i, g: firstGroup.get(id) ?? Infinity })).sort((p, q) => p.g - q.g || p.i - q.i);
   const x = new Float64Array(n);
   const y = new Float64Array(n);
+  // A tall box (phones) gets a tall web: gravity is elliptical, `stretch`× longer vertically.
+  const stretch = Math.min(2.2, Math.max(1, (box.y1 - box.y0) / Math.max(1, box.x1 - box.x0)));
+  const k2 = stretch * stretch;
   const r0 = Math.max(1, n / (2 * Math.PI));
   order.forEach(({ i }, k) => {
     const a = -Math.PI / 2 + (2 * Math.PI * k) / n;
     x[i] = r0 * Math.cos(a);
-    y[i] = r0 * Math.sin(a);
+    y[i] = r0 * Math.sin(a) * stretch;
   });
 
   const dx = new Float64Array(n);
@@ -535,9 +538,9 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
     }
     for (let i = 0; i < n; i++) {
       // Gravity (∝ d²) keeps loners and separate clusters from drifting off.
-      const d = Math.sqrt(x[i] * x[i] + y[i] * y[i]);
+      const d = Math.sqrt(x[i] * x[i] + (y[i] * y[i]) / k2);
       dx[i] -= x[i] * d * GRAVITY;
-      dy[i] -= y[i] * d * GRAVITY;
+      dy[i] -= (y[i] / k2) * d * GRAVITY;
       const len = Math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]);
       if (len > 0) {
         const step = Math.min(len, temp);
@@ -547,7 +550,7 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
     }
   }
 
-  // Fit into the box (each axis on its own, but never more than 1.6× stretched vs. the other).
+  // Fit into the box (each axis on its own, but never far more stretched than the other).
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
@@ -563,7 +566,9 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
   let sx = Math.min(MAX_SCALE, maxX > minX ? bw / (maxX - minX) : MAX_SCALE);
   let sy = Math.min(MAX_SCALE, maxY > minY ? bh / (maxY - minY) : MAX_SCALE);
   sx = Math.min(sx, sy * 1.6);
-  sy = Math.min(sy, sx * 1.6);
+  // A tall box may stretch further vertically than a wide one horizontally (the gravity is only
+  // `stretch`× elliptical, so loners don't fly off to the far ends).
+  sy = Math.min(sy, sx * 1.6 * stretch);
   const midX = (minX + maxX) / 2;
   const midY = (minY + maxY) / 2;
   const px = new Float64Array(n);
@@ -610,8 +615,21 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
   return out;
 }
 
-/** Height for the web card: grows with the number of people, within limits (px). */
-export function webHeight(people: number, wide: boolean): number {
-  const base = wide ? 300 : 280;
-  return Math.round(Math.min(wide ? 520 : 480, base + Math.max(0, people - 4) * (wide ? 14 : 16)));
+/** Spread factor over a tight grid: a force layout leaves gaps, so give it this much more room. */
+const WEB_DENSITY = 1.25;
+const MIN_WEB_HEIGHT = 280;
+
+/**
+ * Height for the web (px): as tall as everyone needs at `gap` spacing across the inner width,
+ * so the web gets longer as people are added — never denser (a fixed box piles them up).
+ */
+export function webHeight(
+  people: number,
+  fit: { width: number; pad: { x: number; top: number; bottom: number }; gap: { x: number; y: number } },
+): number {
+  const inner = Math.max(1, fit.width - 2 * fit.pad.x);
+  // Columns that fit across; rows follow.
+  const cols = Math.max(1, Math.floor(inner / fit.gap.x) + 1);
+  const need = (Math.ceil(people / cols) - 1) * fit.gap.y * WEB_DENSITY;
+  return Math.round(Math.max(MIN_WEB_HEIGHT, need + fit.pad.top + fit.pad.bottom));
 }

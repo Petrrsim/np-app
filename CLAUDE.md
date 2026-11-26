@@ -256,7 +256,12 @@ their first direct group's colour), connections as lines in their tone's colour 
 stroked as wide as the halo). The layout is `layoutWeb` in [src/lib/people.ts](src/lib/people.ts): a
 deterministic force-directed layout (same data → same picture, no randomness) where positive ties
 pull closer than negative ones (`TONE_PULL`) and group members cluster, then fitted to the card
-and de-overlapped; data changes glide people to their new spots (`useTween`). Tapping a person
+and de-overlapped; data changes glide people to their new spots (`useTween`). The web never gets denser as people
+are added — it gets **taller**: `webHeight` sizes it for everyone at the `gap` spacing across the
+inner width, and in a tall box (phones) `layoutWeb`'s gravity is elliptical so the layout fills the
+height. Two size sets in people-web.tsx: `WIDE` and `COMPACT` (< 560 px: smaller discs, halos, names).
+A filter row above the web ("Everyone" + top-level groups; a picked group's subgroups appear after it,
+persisted as `np.people.web-group`) shows one group with its subgroups on its own. Tapping a person
 focuses them (others fade, their connection names show as pills where they fit), tapping again or
 "Open" opens their profile; tapping a line shows that connection. **Groups** — cards per top-level
 group with subgroups nested inside (any depth), direct members as chips, "+ subgroup" and edit on
