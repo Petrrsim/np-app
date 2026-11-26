@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/people/person-avatar";
 import { TONE_UI, ToneLegend, TonePill } from "@/components/people/tone";
 import { usePanZoom } from "@/components/people/use-pan-zoom";
+import { HEART_COLOR, HEART_PATH, HeartMark, ROMANTIC_LABEL } from "@/components/people/heart";
 
 /** Sizes of everything on the web: roomy on wide cards, tighter on phones (< `WIDE_MIN` px). */
 interface Dims {
@@ -48,6 +49,8 @@ interface Dims {
   pad: { x: number; top: number; bottom: number };
   nameFont: number;
   initialsFont: number;
+  /** Radius of the heart badge (romantic relationship) on a disc. */
+  heartR: number;
   /** Names longer than this are cut with "…". */
   nameMax: number;
   /** Rough width of one name character (px) at `nameFont`, for collision checks. */
@@ -63,6 +66,7 @@ const WIDE: Dims = {
   pad: { x: 48, top: 52, bottom: 54 },
   nameFont: 11,
   initialsFont: 12,
+  heartR: 7.5,
   nameMax: 14,
   charW: 6.2,
 };
@@ -76,6 +80,7 @@ const COMPACT: Dims = {
   pad: { x: 40, top: 38, bottom: 40 },
   nameFont: 10,
   initialsFont: 10,
+  heartR: 6.5,
   nameMax: 13,
   charW: 5.6,
 };
@@ -625,6 +630,18 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                           >
                             {initials(person.name)}
                           </text>
+                          {/* Heart (a romantic relationship): a little badge on the disc's upper-right edge. */}
+                          {person.romantic && (
+                            <g transform={`translate(${(nodeR * 0.74).toFixed(1)} ${(-nodeR * 0.74).toFixed(1)})`}>
+                              <title>{ROMANTIC_LABEL}</title>
+                              <circle r={d.heartR} fill="#ffffff" filter="url(#web-node-shadow)" />
+                              <path
+                                d={HEART_PATH}
+                                fill={HEART_COLOR}
+                                transform={`scale(${(d.heartR / 15).toFixed(3)}) translate(-12 -12)`}
+                              />
+                            </g>
+                          )}
                           <text
                             y={nameY}
                             textAnchor="middle"
@@ -688,7 +705,10 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                 vibe={focused?.vibe}
               />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm font-medium">{focusName}</span>
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="truncate text-sm font-medium">{focusName}</span>
+                  {focused?.romantic && <HeartMark />}
+                </span>
                 <span className="truncate text-xs text-muted-foreground">
                   {focused && focused.vibe !== null && (
                     <span className={TONE_UI[focused.vibe].text}>

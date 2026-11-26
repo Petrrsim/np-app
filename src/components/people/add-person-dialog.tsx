@@ -12,8 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PersonAvatar } from "@/components/people/person-avatar";
 import { GroupChip } from "@/components/people/group-chip";
+import { HeartToggle } from "@/components/people/heart";
 
-/** New person: name, optionally straight into groups and with a first note. */
+/** New person: name, optionally a heart, straight into groups and with a first note. */
 export function AddPersonDialog({
   model,
   open,
@@ -30,6 +31,7 @@ export function AddPersonDialog({
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [groupIds, setGroupIds] = useState<number[]>([]);
+  const [romantic, setRomantic] = useState(false);
   const groups = model?.groups ?? [];
   const firstColor = groupIds.length ? groupHex(groups.find((g) => g.id === groupIds[0])?.color) : null;
 
@@ -37,6 +39,7 @@ export function AddPersonDialog({
     setName("");
     setNote("");
     setGroupIds([]);
+    setRomantic(false);
   }
 
   async function submit() {
@@ -47,7 +50,7 @@ export function AddPersonDialog({
       return;
     }
     try {
-      const person = await create.mutateAsync({ name: trimmed, note, groupIds });
+      const person = await create.mutateAsync({ name: trimmed, note, groupIds, romantic });
       toast.success(`${person.name} added`);
       reset();
       onOpenChange(false);
@@ -91,6 +94,7 @@ export function AddPersonDialog({
               aria-label="Name"
               className="h-11 text-base"
             />
+            <HeartToggle on={romantic} onChange={setRomantic} />
           </div>
 
           {groups.length > 0 && (

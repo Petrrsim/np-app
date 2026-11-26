@@ -30,6 +30,7 @@
   --color-tie-positive: var(--tie-positive);
   --color-tie-neutral: var(--tie-neutral);
   --color-tie-negative: var(--tie-negative);
+  --color-heart: var(--heart);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -92,6 +93,9 @@
   --tie-positive: #16a34a;
   --tie-neutral: #8f8d86;
   --tie-negative: #dc2626;
+
+  /* People page heart (a romantic relationship): pink, apart from the red negative tie. */
+  --heart: #db2777;
 
   /* Year heatmap: diverging red (below your average) ↔ blue (above), neutral gray middle. */
   --heat-lo-3: #b8322b;

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NP_OPTIONS } from "@/components/people-picker";
+import { HeartMark } from "@/components/people/heart";
 import { PersonAvatar } from "@/components/people/person-avatar";
 
 const MOVE_BTN =
@@ -161,6 +162,7 @@ export function PeopleList({ model, onOpen }: { model: PeopleModel; onOpen: (id:
                         <span className={cn("truncate text-sm font-medium", p.hidden && "text-muted-foreground")}>
                           {p.name}
                         </span>
+                        {p.romantic && <HeartMark />}
                         {groups.map((g) => (
                           <span
                             key={g.id}

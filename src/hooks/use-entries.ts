@@ -21,7 +21,7 @@ export const GROUPS_KEY = ["person-groups"] as const;
 export const LINKS_KEY = ["person-links"] as const;
 
 /** Columns of `np_people` the app reads (the list, pickers and the People page share them). */
-export const PERSON_COLUMNS = "id, name, hidden, position, note, note_updated_at, vibe";
+export const PERSON_COLUMNS = "id, name, hidden, position, note, note_updated_at, vibe, romantic";
 
 // decrypt-entries returns at most 1000 rows per call (20 if no limit is sent).
 const PAGE_SIZE = 1000;

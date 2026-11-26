@@ -45,6 +45,8 @@ export interface Person {
   note_updated_at: string | null;
   /** Your own energy with them: -1 draining · 0 neutral · 1 energizing; null = not set. */
   vibe: LinkTone | null;
+  /** Heart: there was some kind of romantic relationship with them. */
+  romantic: boolean;
 }
 
 /**

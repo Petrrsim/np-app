@@ -61,16 +61,18 @@ export function useCreatePerson() {
       name,
       note = "",
       groupIds = [],
+      romantic = false,
     }: {
       name: string;
       note?: string;
       groupIds?: number[];
+      romantic?: boolean;
     }): Promise<Person> => {
       const trimmed = name.trim();
       const text = note.trim();
       const { data, error } = await supabase
         .from("np_people")
-        .insert({ name: trimmed, note: text, note_updated_at: text ? new Date().toISOString() : null })
+        .insert({ name: trimmed, note: text, note_updated_at: text ? new Date().toISOString() : null, romantic })
         .select(PERSON_COLUMNS)
         .single();
       if (error) {
@@ -125,6 +127,22 @@ export function useSaveVibe() {
     },
     onMutate: ({ id, vibe }) => {
       qc.setQueryData<Person[]>(PEOPLE_KEY, (old) => old?.map((p) => (p.id === id ? { ...p, vibe } : p)));
+    },
+    onError: () => qc.invalidateQueries({ queryKey: PEOPLE_KEY }),
+  });
+}
+
+/** Sets / clears the heart (romantic relationship) on a person; optimistic, one save at a time. */
+export function useSaveRomantic() {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: { id: "person-romantic" },
+    mutationFn: async ({ id, romantic }: { id: number; romantic: boolean }) => {
+      const { error } = await supabase.from("np_people").update({ romantic }).eq("id", id);
+      if (error) throw error;
+    },
+    onMutate: ({ id, romantic }) => {
+      qc.setQueryData<Person[]>(PEOPLE_KEY, (old) => old?.map((p) => (p.id === id ? { ...p, romantic } : p)));
     },
     onError: () => qc.invalidateQueries({ queryKey: PEOPLE_KEY }),
   });

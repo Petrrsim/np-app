@@ -12,6 +12,7 @@ import {
   useDeleteLink,
   useSaveLink,
   useSavePersonNote,
+  useSaveRomantic,
   useSaveVibe,
   useSetMemberships,
   type PeopleModel,
@@ -35,6 +36,7 @@ import { NP_OPTIONS } from "@/components/people-picker";
 import { PersonAvatar } from "@/components/people/person-avatar";
 import { TonePill, ToneTiles } from "@/components/people/tone";
 import { GroupChip } from "@/components/people/group-chip";
+import { HeartToggle } from "@/components/people/heart";
 
 const SECTION = "flex flex-col gap-2";
 const SECTION_TITLE = "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
@@ -139,6 +141,7 @@ function Profile({
             className="shadow-sm"
           />
           <NameEditor person={person} />
+          <RomanticToggle person={person} />
         </div>
         <StatsStrip stats={stats} loading={!model.stats} />
       </div>
@@ -240,6 +243,23 @@ function NameEditor({ person }: { person: Person }) {
         {person.hidden ? "Hidden from New Entry · still on past logs" : "Offered in New Entry"}
       </DialogDescription>
     </div>
+  );
+}
+
+/** The heart: there was some kind of romantic relationship with them. Saves at once. */
+function RomanticToggle({ person }: { person: Person }) {
+  const save = useSaveRomantic();
+  return (
+    <HeartToggle
+      size="sm"
+      on={person.romantic}
+      onChange={(romantic) =>
+        save.mutate(
+          { id: person.id, romantic },
+          { onError: (err) => toast.error(errorMessage(err, "Couldn't save the heart")) },
+        )
+      }
+    />
   );
 }
 

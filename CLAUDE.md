@@ -76,7 +76,7 @@ src/
     people/         people-web (SVG "web" of people, connections, group halos) · use-pan-zoom (map pan/zoom) · groups-section (nested
                     group cards + group editor) · people-list ("Everyone", search, Arrange) · person-sheet
                     (profile dialog: stats, note, groups, connections, hide/delete) · add-person-dialog ·
-                    group-chip · person-avatar · tone (connection tone pill / tiles / legend)
+                    group-chip · person-avatar · heart (romantic toggle / mark) · tone (connection tone pill / tiles / legend)
     detective/      now-card (dip status + look-back start) · feeling-card (own words + signal lists) ·
                     mood-strip (weekly bars) · sources-card (ranked logs / one week) · people-card ·
                     dips-card · year-ago-card
@@ -294,7 +294,10 @@ connected person opens them with a back link) has rename, log stats from the cac
 last seen, average NP, NP on recent logs), the **note** (autosaves ~1 s after typing stops, on blur
 and on close; serialized via mutation `scope`, optimistic cache update), **your own energy** with them
 (`np_people.vibe`: Energizing / Neutral / Draining, `VIBE_LABELS`, same colours as connection tones;
-tap the picked tile again to clear; no free text — by the user's choice), group chips (with parent
+tap the picked tile again to clear; no free text — by the user's choice), the **heart**
+(`np_people.romantic`: there was some kind of romantic relationship; `HeartToggle` next to the name, also in
+the Add dialog; shown as a small pink badge on the disc's upper-right edge on the web and a `HeartMark` after
+the name in the list and focus bar; `--heart` token, [heart.tsx](src/components/people/heart.tsx)), group chips (with parent
 path; dashed = in it through a subgroup; tapping adds them directly), connections (pick a person,
 Negative / Neutral / Positive, optional name ≤ 80 chars; one connection per pair), and hide / delete
 (delete also removes their note, memberships and connections).
@@ -319,7 +322,7 @@ its card a tinted border/wash in the feeling colour; unrated picks stay neutral.
 Light "paper & ink" theme (warm off-white page, white cards with `shadow-card`, near-black
 primary matching the logo); scale colours use 600–700 shades so they read as text on white.
 Colours are theme tokens in `globals.css` (`--success`, `--destructive`, `--sleep-poor/fine/good`,
-`--feel-rough/ok/great`, `--tie-positive/neutral/negative` for People connections and your energy;
+`--feel-rough/ok/great`, `--tie-positive/neutral/negative` for People connections and your energy, `--heart` for the People heart;
 SVG uses them as `var(--tie-x, #hex)` with fallbacks, like the chart colours). Sleep and activity feeling both render through `LevelTiles` /
 `LevelBars` in `level-tiles.tsx`. `SuccessBadge` / `SleepBadge` / `ActivityBadge` (exported from
 the picker files) render the History card badges.
