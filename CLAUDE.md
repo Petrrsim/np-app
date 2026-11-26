@@ -256,19 +256,28 @@ their first direct group's colour), connections as lines in their tone's colour 
 stroked as wide as the halo). The layout is `layoutWeb` in [src/lib/people.ts](src/lib/people.ts): a
 deterministic force-directed layout (same data → same picture, no randomness) where positive ties
 pull closer than negative ones (`TONE_PULL`) and group members cluster, then fitted to the card
-and de-overlapped; data changes glide people to their new spots (`useTween`). The web is a **map**: a window of
+and tidied (everyone ≥ `gap` apart; connected people between `LINK_ROOM` = 1.3 and `LINK_REACH` = 2
+gaps — a connection should look like closeness, yet its line must show and be tappable between the
+two discs; nobody within `clearance` = disc + `LINE_CLEAR` of a line that isn't theirs; a final pass
+only separates, so nobody is ever crowded); data changes glide people to their new spots (`useTween`). The web is a **map**: a window of
 modest height (`webViewHeight`) over a bigger canvas (`webCanvas`: sized for everyone at the `gap`
 spacing and shaped like the window, so it never gets denser, only bigger). Panning is native scrolling
-(one finger / trackpad) plus mouse drag; zoom is pinch, trackpad pinch / Ctrl + wheel and the + / − /
-"Show everyone" buttons, anchored under the fingers / cursor (`usePanZoom` in
+(one finger / trackpad) plus mouse drag; zoom is pinch, trackpad pinch / Ctrl + wheel and the − / + /
+"Show everyone" bar, anchored under the fingers / cursor (`usePanZoom` in
 [use-pan-zoom.ts](src/components/people/use-pan-zoom.ts); `webZoom` gives the limits — it opens fitted
-when that's ≥ 0.8×, else at 1×, centred). A mouse drag never counts as a click. Two size sets in
+when that's ≥ 0.8×, else at 1×, centred). A mouse drag never counts as a click. The zoom bar only
+shows when the web doesn't fit at 1× (`isMap`) or is zoomed in; then the web is fitted above a
+`CONTROLS_STRIP` so the bar never covers anyone. Two size sets in
 people-web.tsx: `WIDE` and `COMPACT` (< 560 px: smaller discs, halos, names). In a tall box
-`layoutWeb`'s gravity is elliptical so the layout fills it.
+`layoutWeb`'s gravity is elliptical so the layout fills it. Group names avoid unrelated groups'
+halos (`groupLabelSpot`'s `avoid`).
 A filter row above the web ("Everyone" + top-level groups; a picked group's subgroups appear after it,
 persisted as `np.people.web-group`) shows one group with its subgroups on its own. Tapping a person
-focuses them (others fade, their connection names show as pills where they fit), tapping again or
-"Open" opens their profile; tapping a line shows that connection. **Groups** — cards per top-level
+focuses them (others fade; one ink ring marks them), tapping again or "Open" opens their profile;
+tapping a line shows that connection. Connection names are **never drawn on the web** (by the user's
+choice) — the focus bar under it shows them: for a person, their connections as chips (tone icon, name,
+label) that jump to that person (`jump`: focus + `reveal` pans them into view + keyboard focus moves to
+their node); for a line, both names (tappable) and its tone pill. Esc / ✕ clears the focus. **Groups** — cards per top-level
 group with subgroups nested inside (any depth), direct members as chips, "+ subgroup" and edit on
 each card, plus a "Not in a group" bucket; the group editor sets name, colour, "Inside" (parent),
 members, sibling order and delete. Colours: `GROUP_COLORS` — 32, shown as a 4×8 grid, all ≥ 3.4:1 on

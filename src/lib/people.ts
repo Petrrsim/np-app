@@ -385,18 +385,35 @@ export interface LabelSpot {
   box: Box;
 }
 
+export interface Circle {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** Does `box` reach into the circle? */
+export function boxInCircle(box: Box, c: Circle): boolean {
+  const dx = Math.max(box.x0 - c.x, 0, c.x - box.x1);
+  const dy = Math.max(box.y0 - c.y, 0, c.y - box.y1);
+  return dx * dx + dy * dy < c.r * c.r;
+}
+
+/** Preference lost by a label spot inside another group's halo (it would read as that group's). */
+const FOREIGN_HALO_COST = 3;
+
 /**
  * Where a group's name goes on the web. Candidates around each member — above (preferred),
  * under their name, right, left — are scored by how far the label stays from `obstacles`
  * (people's discs and names) and inside `bounds`; the first one that's clear wins, else the
- * least crowded. `labelW` is the label's (estimated) width; `lift` pushes the spots further out
+ * least crowded. Among clear spots, ones outside `avoid` (other groups' halos, as a circle per
+ * member) win. `labelW` is the label's (estimated) width; `lift` pushes the spots further out
  * (an outer group's label sits in its wider halo, outside its subgroups' labels).
  */
 export function groupLabelSpot(
   members: Point[],
   obstacles: Box[],
   labelW: number,
-  o: { nodeR: number; nameY: number; bounds: Box; lift?: number },
+  o: { nodeR: number; nameY: number; bounds: Box; lift?: number; avoid?: Circle[] },
 ): LabelSpot {
   const CLEAR = 2;
   let best: LabelSpot | null = null;
@@ -406,6 +423,7 @@ export function groupLabelSpot(
     const box = { x0, y0: y - 8, x1: x0 + labelW, y1: y + 2 };
     let gap = Math.min(box.x0 - o.bounds.x0, o.bounds.x1 - box.x1, box.y0 - o.bounds.y0, o.bounds.y1 - box.y1);
     for (const ob of obstacles) gap = Math.min(gap, boxGap(box, ob));
+    if (o.avoid?.some((c) => boxInCircle(box, c))) pref -= FOREIGN_HALO_COST;
     // Clear spots tie on gap, then go by preference and height; crowded ones by how crowded.
     const score = Math.min(gap, CLEAR) * 100 + pref - y * 1e-3;
     if (score > bestScore) {
@@ -438,7 +456,24 @@ export interface WebLayoutInput {
   pad: { x: number; top: number; bottom: number };
   /** Minimum distance between two people, horizontally / vertically (px). */
   gap: { x: number; y: number };
+  /** Connected people keep this many `gap`s apart (default LINK_ROOM), so their line shows. */
+  linkRoom?: number;
+  /** …and at most this many (default LINK_REACH), so they read as close. Infinity = off. */
+  linkReach?: number;
+  /**
+   * Minimum distance (px) from anyone's centre to a connection between two others — their disc,
+   * ring and a margin, so no line runs over or along someone it doesn't connect. 0 = off.
+   */
+  clearance?: number;
 }
+
+/**
+ * Connected people sit at least this many `gap`s apart: the attraction pulls them in to the bare
+ * minimum otherwise, leaving a line too short to see or tap between two discs and their rings.
+ */
+export const LINK_ROOM = 1.3;
+/** Connected people sit at most this many `gap`s apart: a connection should look like closeness. */
+export const LINK_REACH = 2;
 
 /** Pull of a connection by tone: friends sit closer, tense pairs a little further apart. */
 export const TONE_PULL: Record<LinkTone, number> = { [-1]: 0.6, 0: 1, 1: 1.4 };
@@ -578,25 +613,26 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
     py[i] = (box.y0 + box.y1) / 2 + (y[i] - midY) * sy;
   }
 
-  // De-overlap: push pairs apart until they're ≥ `gap` apart (elliptical: labels are wide).
-  for (let pass = 0; pass < 60; pass++) {
+  // De-overlap: push pairs apart until they're ≥ `gap` apart (elliptical: labels are wide), and
+  // connected pairs ≥ `linkRoom` gaps; and step people off connections that aren't theirs.
+  const room = input.linkRoom ?? LINK_ROOM;
+  const clear = input.clearance ?? 0;
+  const linked = new Set(edges.map(({ a, b }) => Math.min(a, b) * n + Math.max(a, b)));
+  /** One sweep pushing too-close pairs apart; true if anyone moved. */
+  const separate = () => {
     let moved = false;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        let ex = (px[i] - px[j]) / gap.x;
-        let ey = (py[i] - py[j]) / gap.y;
-        let d = Math.sqrt(ex * ex + ey * ey);
-        if (d >= 1) continue;
-        if (d < 1e-6) {
-          // Same spot: split along a fixed, index-based direction (deterministic).
-          const a = (i * 2.399963) % (2 * Math.PI);
-          ex = Math.cos(a);
-          ey = Math.sin(a);
-          d = 1e-6;
-        }
-        const push = (1 - d) / 2 + 0.001;
-        const ux = ex / Math.max(d, 1e-6);
-        const uy = ey / Math.max(d, 1e-6);
+        const ex = (px[i] - px[j]) / gap.x;
+        const ey = (py[i] - py[j]) / gap.y;
+        const d = Math.sqrt(ex * ex + ey * ey);
+        const need = linked.has(i * n + j) ? room : 1;
+        if (d >= need) continue;
+        // Same spot: split along a fixed, index-based direction (deterministic).
+        const split = (i * 2.399963) % (2 * Math.PI);
+        const ux = d > 1e-6 ? ex / d : Math.cos(split);
+        const uy = d > 1e-6 ? ey / d : Math.sin(split);
+        const push = (need - d) / 2 + 0.001;
         px[i] += ux * push * gap.x;
         py[i] += uy * push * gap.y;
         px[j] -= ux * push * gap.x;
@@ -604,10 +640,71 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
         moved = true;
       }
     }
+    return moved;
+  };
+  const clampAll = () => {
     for (let i = 0; i < n; i++) {
       px[i] = Math.min(box.x1, Math.max(box.x0, px[i]));
       py[i] = Math.min(box.y1, Math.max(box.y0, py[i]));
     }
+  };
+  const reach = input.linkReach ?? LINK_REACH;
+  for (let pass = 0; pass < 80; pass++) {
+    let moved = false;
+    // Connected people stay close: a pair further than `reach` gaps apart is pulled together.
+    for (const { a, b } of edges) {
+      const ex = (px[a] - px[b]) / gap.x;
+      const ey = (py[a] - py[b]) / gap.y;
+      const d = Math.sqrt(ex * ex + ey * ey);
+      if (d <= reach) continue;
+      const pull = (d - reach) / 2;
+      px[a] -= (ex / d) * pull * gap.x;
+      py[a] -= (ey / d) * pull * gap.y;
+      px[b] += (ex / d) * pull * gap.x;
+      py[b] += (ey / d) * pull * gap.y;
+      moved = true;
+    }
+    // Lines: nobody sits on (or right next to) a connection between two others — it'd look like
+    // theirs too. The person steps off sideways (⅔), the line gives way the other way (⅓).
+    if (clear > 0) {
+      for (const { a, b } of edges) {
+        const vx = px[b] - px[a];
+        const vy = py[b] - py[a];
+        const len2 = vx * vx + vy * vy;
+        if (len2 < 1e-6) continue;
+        const len = Math.sqrt(len2);
+        for (let k = 0; k < n; k++) {
+          if (k === a || k === b) continue;
+          const t = ((px[k] - px[a]) * vx + (py[k] - py[a]) * vy) / len2;
+          // Past either end the nearest point is a person, and the gap between people covers that.
+          if (t <= 0 || t >= 1) continue;
+          const ex = px[k] - (px[a] + vx * t);
+          const ey = py[k] - (py[a] + vy * t);
+          const d = Math.sqrt(ex * ex + ey * ey);
+          if (d >= clear) continue;
+          // Exactly on the line: step to a fixed side (deterministic).
+          const ux = d > 1e-6 ? ex / d : -vy / len;
+          const uy = d > 1e-6 ? ey / d : vx / len;
+          const push = clear - d + 0.5;
+          px[k] += ux * push * (2 / 3);
+          py[k] += uy * push * (2 / 3);
+          px[a] -= ux * push * (1 / 3);
+          py[a] -= uy * push * (1 / 3);
+          px[b] -= ux * push * (1 / 3);
+          py[b] -= uy * push * (1 / 3);
+          moved = true;
+        }
+      }
+    }
+    // People: last, so the gap between them wins.
+    if (separate()) moved = true;
+    clampAll();
+    if (!moved) break;
+  }
+  // The rules above can pull against each other; whatever's left, nobody ends up crowded.
+  for (let pass = 0; pass < 60; pass++) {
+    const moved = separate();
+    clampAll();
     if (!moved) break;
   }
 

@@ -11,10 +11,13 @@ import {
   fmtAgo,
   groupHex,
   boxGap,
+  boxInCircle,
   buildGroupTree,
   groupLabelSpot,
   initials,
   layoutWeb,
+  LINK_ROOM,
+  LINK_REACH,
   webCanvas,
   webViewHeight,
   webZoom,
@@ -279,6 +282,29 @@ describe("groupLabelSpot", () => {
     expect(spot.box.x1).toBeLessThanOrEqual(600);
     expect(spot.box.y0).toBeGreaterThanOrEqual(0);
   });
+
+  it("keeps out of another group's halo when a clear spot outside it exists", () => {
+    const members = [{ x: 100, y: 200 }];
+    // Another group's member right above: its halo covers the preferred spot above.
+    const avoid = [{ x: 100, y: 130, r: 40 }];
+    const spot = groupLabelSpot(members, obstacles(members), 50, { ...o, avoid });
+    expect(spot.y).toBeGreaterThan(200); // under the name instead
+    expect(avoid.some((c) => boxInCircle(spot.box, c))).toBe(false);
+  });
+
+  it("still prefers a clear spot in a foreign halo over a crowded one", () => {
+    const members = [{ x: 100, y: 100 }];
+    const avoid = [{ x: 100, y: 100, r: 300 }]; // every spot is inside it
+    const spot = groupLabelSpot(members, obstacles(members), 50, { ...o, avoid });
+    expect(spot).toMatchObject({ x: 100, y: 74 });
+  });
+
+  it("boxInCircle", () => {
+    const c = { x: 0, y: 0, r: 10 };
+    expect(boxInCircle({ x0: 5, y0: 5, x1: 20, y1: 20 }, c)).toBe(true);
+    expect(boxInCircle({ x0: 8, y0: 8, x1: 20, y1: 20 }, c)).toBe(false); // corner √128 > 10
+    expect(boxInCircle({ x0: -50, y0: -1, x1: 50, y1: 1 }, c)).toBe(true); // centre inside the box
+  });
 });
 
 describe("layoutWeb", () => {
@@ -367,6 +393,105 @@ describe("layoutWeb", () => {
     const within = avg([...pairs(g1, g1), ...pairs(g2, g2)]);
     const across = avg(pairs(g1, g2));
     expect(within).toBeLessThan(across);
+  });
+
+  it("keeps connected people LINK_ROOM gaps apart, so their line shows between the discs", () => {
+    // A tight cluster: attraction alone would pull these to the bare minimum gap.
+    const links = [
+      { a: 1, b: 2, w: 1.4 },
+      { a: 2, b: 3, w: 1.4 },
+      { a: 3, b: 1, w: 1.4 },
+      { a: 3, b: 4, w: 1.4 },
+      { a: 4, b: 5 },
+    ];
+    const pos = layoutWeb({ ...base, ids, links, groups: [[1, 2, 3, 4, 5]] });
+    for (const { a, b } of links) {
+      const p = pos.get(a)!;
+      const q = pos.get(b)!;
+      expect(Math.hypot((p.x - q.x) / 70, (p.y - q.y) / 56)).toBeGreaterThan(LINK_ROOM - 0.03);
+    }
+    // Without the extra room, at least one pair sits closer.
+    const tight = layoutWeb({ ...base, ids, links, groups: [[1, 2, 3, 4, 5]], linkRoom: 1 });
+    const min = Math.min(
+      ...links.map(({ a, b }) => {
+        const p = tight.get(a)!;
+        const q = tight.get(b)!;
+        return Math.hypot((p.x - q.x) / 70, (p.y - q.y) / 56);
+      }),
+    );
+    expect(min).toBeLessThan(LINK_ROOM - 0.03);
+  });
+
+  describe("a busy web (50 people, 45 connections)", () => {
+    // Deterministic pseudo-random web: mostly in-group connections, some across.
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    const people = Array.from({ length: 50 }, (_, i) => i + 1);
+    const groups = [people.slice(0, 10), people.slice(10, 18), people.slice(18, 30), people.slice(30, 36)];
+    const links: { a: number; b: number; w: number }[] = [];
+    const seen = new Set<string>();
+    while (links.length < 45) {
+      const g = groups[Math.floor(rnd() * groups.length)];
+      const a = rnd() < 0.75 ? g[Math.floor(rnd() * g.length)] : people[Math.floor(rnd() * 50)];
+      const b = rnd() < 0.75 ? g[Math.floor(rnd() * g.length)] : people[Math.floor(rnd() * 50)];
+      const key = `${Math.min(a, b)}-${Math.max(a, b)}`;
+      if (a === b || seen.has(key)) continue;
+      seen.add(key);
+      links.push({ a, b, w: [0.6, 1, 1.4][Math.floor(rnd() * 3)] });
+    }
+    const gap = { x: 90, y: 72 };
+    const pad = { x: 69, top: 73, bottom: 75 };
+    const canvas = webCanvas(50, { view: { width: 736, height: 480 }, pad, gap });
+    const input = { ids: people, links, groups, ...canvas, pad, gap };
+    const clearance = 34;
+
+    const lengths = (pos: Map<number, Point>) =>
+      links.map(({ a, b }) => {
+        const p = pos.get(a)!;
+        const q = pos.get(b)!;
+        return Math.hypot((p.x - q.x) / gap.x, (p.y - q.y) / gap.y);
+      });
+    /** (connection, someone else) pairs where the line runs within `clearance` of their centre. */
+    const overPeople = (pos: Map<number, Point>) => {
+      let count = 0;
+      for (const { a, b } of links) {
+        const p = pos.get(a)!;
+        const q = pos.get(b)!;
+        const vx = q.x - p.x;
+        const vy = q.y - p.y;
+        for (const id of people) {
+          if (id === a || id === b) continue;
+          const k = pos.get(id)!;
+          const t = ((k.x - p.x) * vx + (k.y - p.y) * vy) / (vx * vx + vy * vy);
+          if (t > 0 && t < 1 && Math.hypot(k.x - (p.x + vx * t), k.y - (p.y + vy * t)) < clearance - 4) count++;
+        }
+      }
+      return count;
+    };
+    const crowded = (pos: Map<number, Point>) => {
+      const pts = [...pos.values()];
+      let count = 0;
+      for (let i = 0; i < pts.length; i++)
+        for (let j = i + 1; j < pts.length; j++)
+          if (Math.hypot((pts[i].x - pts[j].x) / gap.x, (pts[i].y - pts[j].y) / gap.y) < 0.97) count++;
+      return count;
+    };
+    const loose = layoutWeb({ ...input, linkReach: Infinity });
+    const tight = layoutWeb({ ...input, clearance });
+
+    it("keeps connected people close: no connection much longer than LINK_REACH gaps", () => {
+      expect(Math.max(...lengths(loose))).toBeGreaterThan(LINK_REACH + 0.3);
+      expect(Math.max(...lengths(tight))).toBeLessThan(LINK_REACH + 0.35);
+    });
+
+    it("steps people off connections between two others", () => {
+      expect(overPeople(tight)).toBeLessThan(overPeople(loose));
+      expect(overPeople(tight)).toBeLessThanOrEqual(2);
+    });
+
+    it("still never crowds anyone", () => {
+      expect(crowded(tight)).toBe(0);
+    });
   });
 
   it("ignores links to people who aren't on the web", () => {

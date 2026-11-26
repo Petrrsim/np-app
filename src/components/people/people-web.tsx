@@ -13,7 +13,6 @@ import {
   connectionsOf,
   convexHull,
   groupHex,
-  boxGap,
   groupLabelSpot,
   initials,
   layoutWeb,
@@ -22,13 +21,14 @@ import {
   webViewHeight,
   webZoom,
   type Box,
+  type Circle,
   type GroupTree,
   type Point,
 } from "@/lib/people";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/people/person-avatar";
-import { ToneLegend, TonePill } from "@/components/people/tone";
+import { TONE_UI, ToneLegend, TonePill } from "@/components/people/tone";
 import { usePanZoom } from "@/components/people/use-pan-zoom";
 
 /** Sizes of everything on the web: roomy on wide cards, tighter on phones (< `WIDE_MIN` px). */
@@ -59,7 +59,7 @@ const WIDE: Dims = {
   haloDy: 6,
   nest: 13,
   nameY: 34,
-  gap: { x: 80, y: 64 },
+  gap: { x: 90, y: 72 },
   pad: { x: 48, top: 52, bottom: 54 },
   nameFont: 11,
   initialsFont: 12,
@@ -72,7 +72,7 @@ const COMPACT: Dims = {
   haloDy: 5,
   nest: 9,
   nameY: 27,
-  gap: { x: 74, y: 54 },
+  gap: { x: 83, y: 60 },
   pad: { x: 40, top: 38, bottom: 40 },
   nameFont: 10,
   initialsFont: 10,
@@ -81,6 +81,10 @@ const COMPACT: Dims = {
 };
 const WIDE_MIN = 560;
 const TWEEN_MS = 520;
+/** Height kept free under a big web for the zoom bar (32px + its 8px inset). */
+const CONTROLS_STRIP = 40;
+/** A connection passes at least this far (px) outside the disc of anyone it doesn't connect. */
+const LINE_CLEAR = 14;
 
 type Focus = { kind: "person"; id: number } | { kind: "link"; id: number } | null;
 
@@ -147,7 +151,6 @@ const groupLabelWidth = (name: string, size: number) => name.length * size * 0.7
 const groupLabelSize = (depth: number) => Math.max(8.5, 11 - depth * 1.5);
 /** Top-level group names sit this much further out, a little clear of their halo. */
 const TOP_LABEL_GAP = 8;
-const pillWidth = (label: string) => Math.min(160, label.length * 6.3 + 30);
 
 /**
  * "Your web": everyone as a constellation — connections as lines in their tone's colour, groups
@@ -209,7 +212,12 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
   // The window keeps a modest size; the web is drawn on a bigger canvas (sized for everyone at
   // a readable spacing) that the window pans and zooms over like a map.
   const viewH = webViewHeight(model.people.length, wide) + nest * d.nest;
-  const view = useMemo(() => ({ width: viewW, height: viewH }), [viewW, viewH]);
+  // Only a web that doesn't fit at full size is a map (zoom controls). Then the web is fitted
+  // above a strip kept for the controls, so they never cover anyone.
+  const full = webCanvas(people.length, { view: { width: viewW, height: viewH }, pad, gap: d.gap });
+  const isMap = full.width > viewW || full.height > viewH;
+  const strip = isMap ? CONTROLS_STRIP : 0;
+  const view = useMemo(() => ({ width: viewW, height: viewH - strip }), [viewW, viewH, strip]);
   const { width, height } = webCanvas(people.length, { view, pad, gap: d.gap });
   const canvas = useMemo(() => ({ width, height }), [width, height]);
   const limits = useMemo(() => webZoom(view, canvas), [view, canvas]);
@@ -222,9 +230,12 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
     zoomIn,
     zoomOut,
     showAll,
+    reveal,
     canZoomIn,
     canZoomOut,
   } = usePanZoom(view, canvas, limits, `${viewW}|${width}|${height}|${filter}`);
+  // A web that fits needs no controls — until it's pinched / Ctrl-wheeled in (then: a way back).
+  const showControls = isMap || z > limits.fit + 1e-3;
   const target = useMemo(
     () =>
       viewW
@@ -241,9 +252,11 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
             height,
             pad,
             gap: d.gap,
+            // Disc + energy ring (with its glow) + a line's glow + a little air.
+            clearance: d.nodeR + LINE_CLEAR,
           })
         : new Map<number, Point>(),
-    [people, links, shownGroups, tree, viewW, width, height, pad, d.gap],
+    [people, links, shownGroups, tree, viewW, width, height, pad, d.gap, d.nodeR],
   );
   const shown = useTween(target, width);
   const pos = (id: number) => shown.get(id) ?? target.get(id);
@@ -276,7 +289,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
       ? l.person_a === focusPerson || l.person_b === focusPerson
       : focusLink !== null && l.id === focusLink.id);
 
-  // People's discs and names: what group labels and connection pills must not cover.
+  // People's discs and names: what group labels must not cover.
   const discs: Box[] = [];
   const names: Box[] = [];
   for (const person of people) {
@@ -326,14 +339,20 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
   // Outer rings first so inner ones paint on top; labels inner first so they get the best spots.
   const haloLayers = [...halos].sort((a, b) => b.level - a.level);
   const placed: Box[] = [];
+  // A group's name shouldn't sit in an unrelated group's halo, where it reads as that group's.
+  const related = (a: number, b: number) => tree.ancestors(a).includes(b) || tree.ancestors(b).includes(a);
   const labels = [...halos]
     .sort((a, b) => a.level - b.level)
     .map((h) => {
+      const avoid: Circle[] = halos.flatMap((o) =>
+        o.g.id === h.g.id || related(h.g.id, o.g.id) ? [] : o.blob.map((p) => ({ x: p.x, y: p.y, r: o.r })),
+      );
       const spot = groupLabelSpot(h.pts, [...discs, ...names, ...placed], groupLabelWidth(h.g.name, h.size), {
         nodeR,
         nameY,
         lift: h.level * d.nest + (h.depth === 0 ? TOP_LABEL_GAP : 0),
         bounds: { x0: 2, y0: 2, x1: width - 2, y1: height - 2 },
+        avoid,
       });
       // Keep the next group's name a clear step away, so two labels never read as one.
       const b = spot.box;
@@ -341,47 +360,34 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
       return { ...h, spot };
     });
 
-  // Names of the lit connections as pills — only where one fits without covering a person,
-  // a name or another pill (the focus bar below lists them all anyway).
-  const pills: {
-    key: string;
-    tone: LinkTone;
-    label: string;
-    x: number;
-    y: number;
-    box: Box;
-  }[] = [];
-  const addPill = (key: string, tone: LinkTone, label: string, p?: Point, q?: Point) => {
-    if (!label || !p || !q) return;
-    const w = pillWidth(label);
-    const x = Math.min(width - w / 2 - 4, Math.max(w / 2 + 4, (p.x + q.x) / 2));
-    const y = (p.y + q.y) / 2;
-    const box = { x0: x - w / 2, y0: y - 11, x1: x + w / 2, y1: y + 11 };
-    const clash = [...discs, ...names, ...pills.map((o) => o.box)].some((o) => boxGap(box, o) < 2);
-    if (!clash) pills.push({ key, tone, label, x, y, box });
-  };
-  if (active !== null) {
-    for (const l of links) {
-      if (linkLit(l)) addPill(`l-${l.id}`, l.tone, l.label, pos(l.person_a), pos(l.person_b));
-    }
-  }
-
   const focusName = focusPerson !== null ? model.nameOf(focusPerson) : "";
   const focused = focusPerson !== null ? model.person(focusPerson) : undefined;
-  const focusTies = [
-    ...(focused && focused.vibe !== null ? [`You: ${VIBE_LABELS[focused.vibe].toLowerCase()}`] : []),
-    ...(focusPerson !== null ? connectionsOf(focusPerson, links, model.nameOf) : []).map(
-      ({ link, other }) => `${model.nameOf(other)}${link.label ? ` (${link.label})` : ""}`,
-    ),
-  ];
+  const focusTies = focusPerson !== null ? connectionsOf(focusPerson, links, model.nameOf) : [];
+  const focusGroups = focusPerson !== null ? model.groupsOf(focusPerson).map((g) => g.name) : [];
 
   function tap(id: number) {
     if (focusPerson === id) onOpen(id);
     else setFocus({ kind: "person", id });
   }
 
+  /** Focus someone from the bar below and bring them into view — walking the web tie by tie. */
+  function jump(id: number) {
+    setFocus({ kind: "person", id });
+    const p = target.get(id);
+    if (p) reveal(p.x, p.y);
+    // Keyboard focus follows (the chip just used is replaced by the new person's chips).
+    requestAnimationFrame(() =>
+      scroller.current?.querySelector<SVGGElement>(`[data-person="${id}"]`)?.focus({ preventScroll: true }),
+    );
+  }
+
   return (
-    <Card className="overflow-hidden">
+    <Card
+      className="overflow-hidden"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && active !== null) setFocus(null);
+      }}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 pt-4">
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
@@ -423,7 +429,8 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
             className="relative bg-[radial-gradient(circle,var(--border)_1px,transparent_1.2px)]"
             style={{
               width: Math.max(viewW, width * z),
-              height: Math.max(viewH, height * z),
+              // Zoomed in, the bottom edge can still scroll up past the controls' strip.
+              height: Math.max(viewH, height * z + strip),
               backgroundSize: `${20 * z}px ${20 * z}px`,
             }}
           >
@@ -531,12 +538,14 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                   const selected = focusPerson === person.id;
                   const lit = isLit(person.id);
                   const vibe = person.vibe;
-                  const pulse = vibe !== null ? nodeR + 8 : nodeR + 4;
                   const vibeR = nodeR + 4.5;
+                  // Selected: one ink ring just outside everything else (the energy ring included).
+                  const selR = (vibe !== null ? vibeR : nodeR) + 3.5;
                   return (
                     <g
                       key={person.id}
                       transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`}
+                      data-person={person.id}
                       role="button"
                       tabIndex={0}
                       aria-label={selected ? `Open ${person.name}` : `Focus ${person.name}`}
@@ -549,7 +558,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           tap(person.id);
-                        } else if (e.key === "Escape") setFocus(null);
+                        }
                       }}
                     >
                       <g className="web-pop">
@@ -561,7 +570,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                         >
                           <circle
                             className="ring opacity-0 transition-opacity"
-                            r={nodeR + 5}
+                            r={selR + 3}
                             fill="none"
                             stroke="#1c1b1f"
                             strokeOpacity={0.35}
@@ -569,19 +578,12 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                           />
                           {selected && (
                             <circle
-                              r={nodeR + 6}
+                              r={selR}
                               fill="none"
-                              stroke={hex ?? "#1c1b1f"}
-                              strokeOpacity={0.45}
-                              strokeWidth={2}
-                            >
-                              <animate
-                                attributeName="r"
-                                values={`${pulse};${pulse + 4};${pulse}`}
-                                dur="2.4s"
-                                repeatCount="indefinite"
-                              />
-                            </circle>
+                              stroke="var(--foreground, #1c1b1f)"
+                              strokeWidth={1.75}
+                              className="web-pop"
+                            />
                           )}
                           {/* Your energy with them: a ring in its colour (energizing glows). */}
                           {vibe !== null && (
@@ -610,7 +612,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                             r={nodeR}
                             fill={hex ? tint(hex, 0.13) : "#ffffff"}
                             stroke={hex ? tint(hex, 0.55) : "#d6d4ce"}
-                            strokeWidth={selected ? 2 : 1.25}
+                            strokeWidth={1.25}
                             strokeDasharray={person.hidden ? "3 3" : undefined}
                             filter="url(#web-node-shadow)"
                           />
@@ -626,7 +628,10 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                           <text
                             y={nameY}
                             textAnchor="middle"
-                            className="pointer-events-none fill-foreground font-medium"
+                            className={cn(
+                              "pointer-events-none fill-foreground",
+                              selected ? "font-semibold" : "font-medium",
+                            )}
                             style={{
                               fontSize: d.nameFont,
                               paintOrder: "stroke",
@@ -663,59 +668,68 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                 ))}
               </svg>
             )}
-
-            {/* Names of the lit connections */}
-            {pills.map(({ key, tone, label, x, y }) => (
-              <div
-                key={key}
-                className="pointer-events-none absolute z-10 flex max-w-40 -translate-x-1/2 -translate-y-1/2 justify-center"
-                style={{
-                  left: offset.x + x * z,
-                  top: offset.y + y * z,
-                }}
-              >
-                <TonePill tone={tone} label={label} className="bg-card/95 shadow-sm backdrop-blur-sm" />
-              </div>
-            ))}
           </div>
         </div>
 
-        <MapControls onIn={zoomIn} onOut={zoomOut} onAll={showAll} canIn={canZoomIn} canOut={canZoomOut} />
+        {showControls && (
+          <MapControls onIn={zoomIn} onOut={zoomOut} onAll={showAll} canIn={canZoomIn} canOut={canZoomOut} />
+        )}
       </div>
 
       {/* Focus bar */}
-      <div className="flex min-h-14 items-center gap-3 border-t border-border/70 bg-muted/30 px-4 py-2.5">
+      <div className="flex min-h-14 flex-col justify-center gap-2 border-t border-border/70 bg-muted/30 px-4 py-2.5">
         {focusPerson !== null ? (
           <>
-            <PersonAvatar
-              name={focusName}
-              color={model.colorOf(focusPerson)}
-              size={32}
-              vibe={focused?.vibe}
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium">{focusName}</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {focusTies.length === 0 ? "No connections yet" : focusTies.join(" · ")}
-              </span>
+            <div className="flex items-center gap-3">
+              <PersonAvatar
+                name={focusName}
+                color={model.colorOf(focusPerson)}
+                size={32}
+                vibe={focused?.vibe}
+              />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium">{focusName}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {focused && focused.vibe !== null && (
+                    <span className={TONE_UI[focused.vibe].text}>
+                      {VIBE_LABELS[focused.vibe]} for you ·{" "}
+                    </span>
+                  )}
+                  {focusGroups.length > 0 && `${focusGroups.join(", ")} · `}
+                  {focusTies.length === 0
+                    ? "no connections yet"
+                    : `${focusTies.length} ${focusTies.length === 1 ? "connection" : "connections"}`}
+                </span>
+              </div>
+              <Button size="sm" className="h-8 shrink-0" onClick={() => onOpen(focusPerson)}>
+                Open
+                <ArrowRight />
+              </Button>
+              <ClearButton onClick={() => setFocus(null)} />
             </div>
-            <Button size="sm" className="h-8 shrink-0" onClick={() => onOpen(focusPerson)}>
-              Open
-              <ArrowRight />
-            </Button>
+            {focusTies.length > 0 && (
+              <TieRow key={focusPerson} label={`${focusName}'s connections`} contentKey={focusPerson}>
+                {focusTies.map(({ link, other }) => (
+                  <TieChip
+                    key={link.id}
+                    tone={link.tone}
+                    name={model.nameOf(other)}
+                    label={link.label}
+                    onClick={() => jump(other)}
+                  />
+                ))}
+              </TieRow>
+            )}
           </>
         ) : focusLink ? (
-          <>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="truncate text-sm font-medium">
-                {model.nameOf(focusLink.person_a)} <span className="text-muted-foreground">&</span>{" "}
-                {model.nameOf(focusLink.person_b)}
+          <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+              <span className="flex max-w-full items-center gap-1 text-sm font-medium">
+                <NameButton onClick={() => jump(focusLink.person_a)}>{model.nameOf(focusLink.person_a)}</NameButton>
+                <span className="shrink-0 text-muted-foreground">&</span>
+                <NameButton onClick={() => jump(focusLink.person_b)}>{model.nameOf(focusLink.person_b)}</NameButton>
               </span>
-              <TonePill
-                tone={focusLink.tone as LinkTone}
-                label={focusLink.label}
-                className="max-w-full self-start"
-              />
+              <TonePill tone={focusLink.tone as LinkTone} label={focusLink.label} className="max-w-full" />
             </div>
             <Button
               variant="outline"
@@ -725,25 +739,127 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
             >
               Edit
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              aria-label="Clear"
-              onClick={() => setFocus(null)}
-            >
-              <X />
-            </Button>
-          </>
+            <ClearButton onClick={() => setFocus(null)} />
+          </div>
         ) : (
-          <p className={cn("text-xs text-muted-foreground")}>
+          <p className="text-xs text-muted-foreground">
             {model.links.length === 0 && model.groups.length === 0
               ? "Open someone to connect them with others or put them in a group — your web grows here."
-              : "Drag to move around, pinch or +/− to zoom · tap a person to light up their connections, again to open them."}
+              : `Tap a person to light up their connections, again to open them${
+                  isMap ? ". Drag to move around, pinch or +/− to zoom." : "."
+                }`}
           </p>
         )}
       </div>
     </Card>
+  );
+}
+
+function ClearButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="-mr-2 size-8 shrink-0 text-muted-foreground"
+      aria-label="Clear selection"
+      title="Clear (Esc)"
+      onClick={onClick}
+    >
+      <X />
+    </Button>
+  );
+}
+
+/** A person's name in the focus bar that jumps to them on the web. */
+function NameButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="min-w-0 truncate rounded-sm underline decoration-border decoration-1 underline-offset-[3px] transition-colors hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** One of the focused person's connections: tone icon, name, its own name. Tap = go to them. */
+function TieChip({
+  tone,
+  name,
+  label,
+  onClick,
+}: {
+  tone: LinkTone;
+  name: string;
+  label: string;
+  onClick: () => void;
+}) {
+  const ui = TONE_UI[tone];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Go to ${name}`}
+      className="flex max-w-60 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium shadow-xs transition-colors duration-200 hover:bg-accent active:scale-[0.97]"
+    >
+      <ui.Icon
+        className={cn("size-3 shrink-0", tone === 0 ? "text-muted-foreground" : ui.text)}
+        strokeWidth={2.25}
+        aria-label={TONES[tone].label}
+      />
+      <span className="shrink-0">{name}</span>
+      {label && <span className="truncate font-normal text-muted-foreground">{label}</span>}
+    </button>
+  );
+}
+
+/**
+ * For a sideways-scrolling row: fades the edge(s) with more behind them, so it's clear the row
+ * goes on. `contentKey` = whatever changes the row's content.
+ */
+function useEdgeFade(contentKey: unknown) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ left: false, right: false });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      const left = el.scrollLeft > 1;
+      const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setMore((m) => (m.left === left && m.right === right ? m : { left, right }));
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    el.addEventListener("scroll", check, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", check);
+    };
+  }, [contentKey]);
+  const mask =
+    more.left || more.right
+      ? `linear-gradient(to right, ${more.left ? "transparent, #000 28px" : "#000"}, ${
+          more.right ? "#000 calc(100% - 28px), transparent" : "#000"
+        })`
+      : undefined;
+  return { ref, style: { maskImage: mask, WebkitMaskImage: mask } };
+}
+
+/** The focused person's connections as a sideways-scrolling row of chips. */
+function TieRow({ label, children, contentKey }: { label: string; children: React.ReactNode; contentKey: unknown }) {
+  const { ref, style } = useEdgeFade(contentKey);
+  return (
+    <div
+      ref={ref}
+      role="group"
+      aria-label={label}
+      className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={style}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -769,11 +885,14 @@ function WebFilter({
     const parent = tree.parentOf(group.id);
     return parent === null || open.has(parent);
   });
+  const { ref, style } = useEdgeFade(chips.length);
   return (
     <div
+      ref={ref}
       role="group"
       aria-label="Show on the web"
       className="mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden"
+      style={style}
     >
       <button
         type="button"
@@ -840,17 +959,7 @@ function MapControls({
   canOut: boolean;
 }) {
   return (
-    <div className="absolute right-3 bottom-3 z-20 flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm">
-      <button
-        type="button"
-        className={MAP_BUTTON}
-        onClick={onIn}
-        disabled={!canIn}
-        aria-label="Zoom in"
-        title="Zoom in"
-      >
-        <Plus />
-      </button>
+    <div className="absolute right-2 bottom-2 z-20 flex divide-x divide-border overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm">
       <button
         type="button"
         className={MAP_BUTTON}
@@ -860,6 +969,16 @@ function MapControls({
         title="Zoom out"
       >
         <Minus />
+      </button>
+      <button
+        type="button"
+        className={MAP_BUTTON}
+        onClick={onIn}
+        disabled={!canIn}
+        aria-label="Zoom in"
+        title="Zoom in"
+      >
+        <Plus />
       </button>
       <button
         type="button"

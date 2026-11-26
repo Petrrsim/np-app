@@ -20,9 +20,10 @@ const clamp = (z: number, l: Limits) => Math.min(l.max, Math.max(l.min, z));
  *   drag-with-the-mouse; a drag doesn't count as a click on whatever it started on;
  * - zoom: pinch (phones), pinch on a trackpad or Ctrl + wheel (laptops), and the returned
  *   `zoomIn` / `zoomOut` / `showAll`, always keeping the point under the fingers / cursor in place;
- * - `resetKey` changing (window size, canvas size, filter) goes back to `limits.start`, centred.
+ * - `resetKey` changing (window size, canvas size, filter) goes back to `limits.start`, centred;
+ * - `reveal` scrolls a canvas point into the middle when it's off-screen (or near the edge).
  * The canvas is drawn at `zoom`, `offset` px in from the top-left (it's centred while smaller
- * than the window).
+ * than `view`). `view` may be shorter than the scrolling element (room kept for map controls).
  */
 export function usePanZoom(view: Size, canvas: Size, limits: Limits, resetKey: string) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -95,6 +96,28 @@ export function usePanZoom(view: Size, canvas: Size, limits: Limits, resetKey: s
   }, [zoomTo]);
   const zoomIn = useCallback(() => zoomTo(live.current.zoom * STEP), [zoomTo]);
   const zoomOut = useCallback(() => zoomTo(live.current.zoom / STEP), [zoomTo]);
+
+  /** Scrolls canvas point (cx, cy) to the middle of the window — unless it's already well in view. */
+  const reveal = useCallback(
+    (cx: number, cy: number, margin = 56) => {
+      const el = scroller.current;
+      if (!el) return;
+      const { view: v, zoom: z } = live.current;
+      const o = offsetAt(z);
+      const x = cx * z + o.x;
+      const y = cy * z + o.y;
+      const wx = x - el.scrollLeft;
+      const wy = y - el.scrollTop;
+      if (wx >= margin && wx <= v.width - margin && wy >= margin && wy <= v.height - margin) return;
+      const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollTo({
+        left: x - v.width / 2,
+        top: y - v.height / 2,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    },
+    [offsetAt],
+  );
 
   // Pinch (touch) and trackpad pinch / Ctrl + wheel: native, non-passive listeners so the page
   // itself doesn't zoom.
@@ -232,6 +255,7 @@ export function usePanZoom(view: Size, canvas: Size, limits: Limits, resetKey: s
     zoomIn,
     zoomOut,
     showAll,
+    reveal,
     dragging,
     handlers,
   };

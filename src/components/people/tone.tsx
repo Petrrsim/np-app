@@ -116,14 +116,14 @@ export function ToneTiles<V extends LinkTone | null>({
 /** Small legend: coloured line samples for the three tones. */
 export function ToneLegend({ className, ring = false }: { className?: string; ring?: boolean }) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground", className)}>
+    <div className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground", className)}>
       {([1, 0, -1] as LinkTone[]).map((tone) => (
-        <span key={tone} className="inline-flex items-center gap-1.5">
-          <svg width="18" height="6" aria-hidden className="overflow-visible">
+        <span key={tone} className="inline-flex items-center gap-1">
+          <svg width="14" height="6" aria-hidden className="overflow-visible">
             <line
               x1="1"
               y1="3"
-              x2="17"
+              x2="13"
               y2="3"
               stroke={TONES[tone].color}
               strokeWidth={tone === 0 ? 1.75 : 2.5}
@@ -135,11 +135,11 @@ export function ToneLegend({ className, ring = false }: { className?: string; ri
         </span>
       ))}
       {ring && (
-        <span className="inline-flex items-center gap-1.5" title="A ring around someone = your energy with them">
+        <span className="inline-flex items-center gap-1" title="A ring around someone = your energy with them">
           <svg width="12" height="12" aria-hidden className="overflow-visible">
             <circle cx="6" cy="6" r="4" fill="#ffffff" stroke={TONES[1].color} strokeWidth="2" />
           </svg>
-          Ring = your energy
+          Your energy
         </span>
       )}
     </div>
