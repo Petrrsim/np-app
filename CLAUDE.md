@@ -73,7 +73,7 @@ src/
     dashboard/      trend-card (chart controls) · trend-chart (hand-built SVG chart) ·
                     stat-tiles (Mood/Energy/Flow tiles) · year-heatmap (daily calendar) ·
                     insights (weekday / success / tag / sleep / ripple-effect cards)
-    people/         people-web (SVG "web" of people, connections, group halos) · groups-section (nested
+    people/         people-web (SVG "web" of people, connections, group halos) · use-pan-zoom (map pan/zoom) · groups-section (nested
                     group cards + group editor) · people-list ("Everyone", search, Arrange) · person-sheet
                     (profile dialog: stats, note, groups, connections, hide/delete) · add-person-dialog ·
                     group-chip · person-avatar · tone (connection tone pill / tiles / legend)
@@ -256,10 +256,15 @@ their first direct group's colour), connections as lines in their tone's colour 
 stroked as wide as the halo). The layout is `layoutWeb` in [src/lib/people.ts](src/lib/people.ts): a
 deterministic force-directed layout (same data → same picture, no randomness) where positive ties
 pull closer than negative ones (`TONE_PULL`) and group members cluster, then fitted to the card
-and de-overlapped; data changes glide people to their new spots (`useTween`). The web never gets denser as people
-are added — it gets **taller**: `webHeight` sizes it for everyone at the `gap` spacing across the
-inner width, and in a tall box (phones) `layoutWeb`'s gravity is elliptical so the layout fills the
-height. Two size sets in people-web.tsx: `WIDE` and `COMPACT` (< 560 px: smaller discs, halos, names).
+and de-overlapped; data changes glide people to their new spots (`useTween`). The web is a **map**: a window of
+modest height (`webViewHeight`) over a bigger canvas (`webCanvas`: sized for everyone at the `gap`
+spacing and shaped like the window, so it never gets denser, only bigger). Panning is native scrolling
+(one finger / trackpad) plus mouse drag; zoom is pinch, trackpad pinch / Ctrl + wheel and the + / − /
+"Show everyone" buttons, anchored under the fingers / cursor (`usePanZoom` in
+[use-pan-zoom.ts](src/components/people/use-pan-zoom.ts); `webZoom` gives the limits — it opens fitted
+when that's ≥ 0.8×, else at 1×, centred). A mouse drag never counts as a click. Two size sets in
+people-web.tsx: `WIDE` and `COMPACT` (< 560 px: smaller discs, halos, names). In a tall box
+`layoutWeb`'s gravity is elliptical so the layout fills it.
 A filter row above the web ("Everyone" + top-level groups; a picked group's subgroups appear after it,
 persisted as `np.people.web-group`) shows one group with its subgroups on its own. Tapping a person
 focuses them (others fade, their connection names show as pills where they fit), tapping again or

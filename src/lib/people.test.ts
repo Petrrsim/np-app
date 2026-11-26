@@ -15,7 +15,9 @@ import {
   groupLabelSpot,
   initials,
   layoutWeb,
-  webHeight,
+  webCanvas,
+  webViewHeight,
+  webZoom,
   nextGroupColor,
   orderPair,
   tint,
@@ -373,27 +375,52 @@ describe("layoutWeb", () => {
   });
 });
 
-describe("webHeight", () => {
-  const phone = { width: 328, pad: { x: 57, top: 55, bottom: 57 }, gap: { x: 74, y: 54 } };
-  const laptop = { width: 736, pad: { x: 69, top: 73, bottom: 75 }, gap: { x: 80, y: 64 } };
-
-  it("never goes below the minimum", () => {
-    expect(webHeight(0, phone)).toBe(280);
-    expect(webHeight(3, laptop)).toBe(280);
+describe("webViewHeight", () => {
+  it("grows a little with people, within limits", () => {
+    expect(webViewHeight(2, false)).toBe(280);
+    expect(webViewHeight(2, true)).toBe(300);
+    expect(webViewHeight(45, false)).toBe(480);
+    expect(webViewHeight(500, true)).toBe(520);
   });
+});
 
-  it("grows with the number of people instead of packing them tighter", () => {
-    for (const fit of [phone, laptop]) {
-      const h = [20, 45, 90, 180].map((n) => webHeight(n, fit));
-      for (let i = 1; i < h.length; i++) expect(h[i]).toBeGreaterThan(h[i - 1]);
+describe("webCanvas", () => {
+  const phone = { view: { width: 328, height: 489 }, pad: { x: 57, top: 55, bottom: 57 }, gap: { x: 74, y: 54 } };
+  const laptop = { view: { width: 736, height: 533 }, pad: { x: 69, top: 73, bottom: 75 }, gap: { x: 80, y: 64 } };
+
+  it("is never smaller than the window", () => {
+    for (const o of [phone, laptop]) {
+      expect(webCanvas(0, o)).toEqual(o.view);
+      expect(webCanvas(4, o)).toEqual(o.view);
     }
-    // Twice the people ≈ twice the inner height (a constant density), not a fixed cap.
-    const inner = (n: number, fit: typeof phone) => webHeight(n, fit) - fit.pad.top - fit.pad.bottom;
-    expect(inner(180, laptop) / inner(90, laptop)).toBeGreaterThan(1.8);
   });
 
-  it("makes a narrow card taller than a wide one for the same people", () => {
-    expect(webHeight(45, phone)).toBeGreaterThan(webHeight(45, laptop));
+  it("grows with the number of people at a constant density", () => {
+    const inner = (n: number) => {
+      const c = webCanvas(n, laptop);
+      return (c.width - 2 * laptop.pad.x) * (c.height - laptop.pad.top - laptop.pad.bottom);
+    };
+    expect(inner(181) / inner(91)).toBeCloseTo(2, 1);
+  });
+
+  it("is shaped like the window, so it pans both ways on a phone", () => {
+    const c = webCanvas(45, phone);
+    expect(c.width).toBeGreaterThan(phone.view.width);
+    expect(c.height).toBeGreaterThan(phone.view.height);
+    const ratio = (c.width - 2 * phone.pad.x) / (c.height - phone.pad.top - phone.pad.bottom);
+    expect(ratio).toBeCloseTo(phone.view.width / phone.view.height, 2);
+  });
+});
+
+describe("webZoom", () => {
+  it("fits the whole canvas, never above full size", () => {
+    expect(webZoom({ width: 300, height: 300 }, { width: 600, height: 400 }).fit).toBe(0.5);
+    expect(webZoom({ width: 300, height: 300 }, { width: 300, height: 300 }).fit).toBe(1);
+  });
+
+  it("opens fitted only while that stays readable", () => {
+    expect(webZoom({ width: 700, height: 500 }, { width: 780, height: 600 }).start).toBeCloseTo(500 / 600);
+    expect(webZoom({ width: 330, height: 490 }, { width: 510, height: 700 }).start).toBe(1);
   });
 });
 
@@ -403,7 +430,7 @@ describe("layoutWeb in a tall box (phones)", () => {
   const gap = { x: 74, y: 54 };
   const pad = { x: 50, top: 40, bottom: 40 };
   const width = 330;
-  const height = webHeight(n, { width, pad, gap });
+  const height = 900;
   const pos = layoutWeb({
     ids,
     links: [],

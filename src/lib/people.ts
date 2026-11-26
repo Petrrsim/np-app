@@ -615,21 +615,50 @@ export function layoutWeb(input: WebLayoutInput): Map<number, Point> {
   return out;
 }
 
+/** Height of the web's window on the page (px): grows a little with the number of people, within limits. */
+export function webViewHeight(people: number, wide: boolean): number {
+  const base = wide ? 300 : 280;
+  return Math.round(Math.min(wide ? 520 : 480, base + Math.max(0, people - 4) * (wide ? 14 : 16)));
+}
+
 /** Spread factor over a tight grid: a force layout leaves gaps, so give it this much more room. */
-const WEB_DENSITY = 1.25;
-const MIN_WEB_HEIGHT = 280;
+const WEB_DENSITY = 1.3;
 
 /**
- * Height for the web (px): as tall as everyone needs at `gap` spacing across the inner width,
- * so the web gets longer as people are added — never denser (a fixed box piles them up).
+ * Size of the web's canvas (px) — the "map" the window pans over. Big enough for everyone at
+ * `gap` spacing (so it never gets denser, only bigger), shaped like the window so zooming out
+ * shows it evenly, and never smaller than the window.
  */
-export function webHeight(
+export function webCanvas(
   people: number,
-  fit: { width: number; pad: { x: number; top: number; bottom: number }; gap: { x: number; y: number } },
-): number {
-  const inner = Math.max(1, fit.width - 2 * fit.pad.x);
-  // Columns that fit across; rows follow.
-  const cols = Math.max(1, Math.floor(inner / fit.gap.x) + 1);
-  const need = (Math.ceil(people / cols) - 1) * fit.gap.y * WEB_DENSITY;
-  return Math.round(Math.max(MIN_WEB_HEIGHT, need + fit.pad.top + fit.pad.bottom));
+  o: {
+    view: { width: number; height: number };
+    pad: { x: number; top: number; bottom: number };
+    gap: { x: number; y: number };
+  },
+): { width: number; height: number } {
+  const area = Math.max(0, people - 1) * o.gap.x * o.gap.y * WEB_DENSITY;
+  const ratio = o.view.width / Math.max(1, o.view.height);
+  const innerW = Math.sqrt(area * ratio);
+  const innerH = innerW / Math.max(ratio, 1e-6);
+  return {
+    width: Math.round(Math.max(o.view.width, innerW + 2 * o.pad.x)),
+    height: Math.round(Math.max(o.view.height, innerH + o.pad.top + o.pad.bottom)),
+  };
+}
+
+export const MAX_WEB_ZOOM = 2;
+/** Open zoomed out to show everyone when that's at least this readable; else at 1 (full size). */
+const FIT_IF_ABOVE = 0.8;
+
+/**
+ * Zoom limits for the web: `fit` shows the whole canvas in the window (never above 1), `min` = fit
+ * (no point zooming out further), and `start` = fit when it's still readable, else full size.
+ */
+export function webZoom(
+  view: { width: number; height: number },
+  canvas: { width: number; height: number },
+): { min: number; fit: number; start: number; max: number } {
+  const fit = Math.min(1, view.width / canvas.width, view.height / canvas.height);
+  return { min: fit, fit, start: fit >= FIT_IF_ABOVE ? fit : 1, max: MAX_WEB_ZOOM };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, X } from "lucide-react";
+import { ArrowRight, Minus, Plus, Scan, X } from "lucide-react";
 import type { LinkTone } from "@/types/db";
 import type { PeopleModel } from "@/hooks/use-people";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,9 @@ import {
   initials,
   layoutWeb,
   tint,
-  webHeight,
+  webCanvas,
+  webViewHeight,
+  webZoom,
   type Box,
   type GroupTree,
   type Point,
@@ -27,6 +29,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/people/person-avatar";
 import { ToneLegend, TonePill } from "@/components/people/tone";
+import { usePanZoom } from "@/components/people/use-pan-zoom";
 
 /** Sizes of everything on the web: roomy on wide cards, tighter on phones (< `WIDE_MIN` px). */
 interface Dims {
@@ -128,7 +131,8 @@ function haloPath(points: Point[]): string | null {
   const hull = convexHull(points);
   if (hull.length < 2) return null;
   return (
-    hull.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ") + (hull.length > 2 ? " Z" : "")
+    hull.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ") +
+    (hull.length > 2 ? " Z" : "")
   );
 }
 
@@ -156,7 +160,12 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
   const [storedFilter, setFilter] = useStoredState<number | null>("np.people.web-group", null);
   const filter = storedFilter !== null && tree.group(storedFilter) ? storedFilter : null;
   const { people, links, shownGroups } = useMemo(() => {
-    if (filter === null) return { people: model.people, links: model.links, shownGroups: tree.ordered };
+    if (filter === null)
+      return {
+        people: model.people,
+        links: model.links,
+        shownGroups: tree.ordered,
+      };
     const ids = new Set(tree.allMembers(filter));
     const inside = new Set([filter, ...tree.descendants(filter)]);
     const base = tree.ancestors(filter).length;
@@ -170,36 +179,62 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
     };
   }, [filter, model.people, model.links, tree]);
   const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [viewW, setViewW] = useState(0);
   const [focus, setFocus] = useState<Focus>(null);
   const anyVibe = people.some((p) => p.vibe !== null);
 
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    const ro = new ResizeObserver(() => setViewW(el.clientWidth));
     ro.observe(el);
-    setWidth(el.clientWidth);
+    setViewW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
 
-  const wide = width >= WIDE_MIN;
+  const wide = viewW >= WIDE_MIN;
   const d = wide ? WIDE : COMPACT;
   const { nodeR, nameY } = d;
   // Deepest nesting: outer halos need room at the edges.
   const nest = Math.max(0, ...shownGroups.map(({ group }) => tree.height(group.id)));
   const extra = nest * d.nest + TOP_LABEL_GAP;
   const pad = useMemo(
-    () => ({ x: d.pad.x + extra, top: d.pad.top + extra, bottom: d.pad.bottom + extra }),
+    () => ({
+      x: d.pad.x + extra,
+      top: d.pad.top + extra,
+      bottom: d.pad.bottom + extra,
+    }),
     [d, extra],
   );
-  const height = webHeight(people.length, { width, pad, gap: d.gap });
+  // The window keeps a modest size; the web is drawn on a bigger canvas (sized for everyone at
+  // a readable spacing) that the window pans and zooms over like a map.
+  const viewH = webViewHeight(model.people.length, wide) + nest * d.nest;
+  const view = useMemo(() => ({ width: viewW, height: viewH }), [viewW, viewH]);
+  const { width, height } = webCanvas(people.length, { view, pad, gap: d.gap });
+  const canvas = useMemo(() => ({ width, height }), [width, height]);
+  const limits = useMemo(() => webZoom(view, canvas), [view, canvas]);
+  const {
+    scroller,
+    zoom: z,
+    offset,
+    dragging,
+    handlers,
+    zoomIn,
+    zoomOut,
+    showAll,
+    canZoomIn,
+    canZoomOut,
+  } = usePanZoom(view, canvas, limits, `${viewW}|${width}|${height}|${filter}`);
   const target = useMemo(
     () =>
-      width
+      viewW
         ? layoutWeb({
             ids: people.map((p) => p.id),
-            links: links.map((l) => ({ a: l.person_a, b: l.person_b, w: TONE_PULL[l.tone] })),
+            links: links.map((l) => ({
+              a: l.person_a,
+              b: l.person_b,
+              w: TONE_PULL[l.tone],
+            })),
             // Depth-first, each with everyone in its subgroups: nested groups cluster inside their parent.
             groups: shownGroups.map(({ group }) => tree.allMembers(group.id)),
             width,
@@ -208,7 +243,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
             gap: d.gap,
           })
         : new Map<number, Point>(),
-    [people, links, shownGroups, tree, width, height, pad, d.gap],
+    [people, links, shownGroups, tree, viewW, width, height, pad, d.gap],
   );
   const shown = useTween(target, width);
   const pos = (id: number) => shown.get(id) ?? target.get(id);
@@ -247,9 +282,19 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
   for (const person of people) {
     const p = pos(person.id);
     if (!p) continue;
-    discs.push({ x0: p.x - nodeR, y0: p.y - nodeR, x1: p.x + nodeR, y1: p.y + nodeR });
+    discs.push({
+      x0: p.x - nodeR,
+      y0: p.y - nodeR,
+      x1: p.x + nodeR,
+      y1: p.y + nodeR,
+    });
     const w = nameWidth(person.name, d);
-    names.push({ x0: p.x - w / 2, y0: p.y + nameY - 9, x1: p.x + w / 2, y1: p.y + nameY + 3 });
+    names.push({
+      x0: p.x - w / 2,
+      y0: p.y + nameY - 9,
+      x1: p.x + w / 2,
+      y1: p.y + nameY + 3,
+    });
   }
 
   // Halos: a group's blob covers everyone in it and its subgroups, wider per level of nesting.
@@ -298,7 +343,14 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
 
   // Names of the lit connections as pills — only where one fits without covering a person,
   // a name or another pill (the focus bar below lists them all anyway).
-  const pills: { key: string; tone: LinkTone; label: string; x: number; y: number; box: Box }[] = [];
+  const pills: {
+    key: string;
+    tone: LinkTone;
+    label: string;
+    x: number;
+    y: number;
+    box: Box;
+  }[] = [];
   const addPill = (key: string, tone: LinkTone, label: string, p?: Point, q?: Point) => {
     if (!label || !p || !q) return;
     const w = pillWidth(label);
@@ -357,254 +409,290 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
         />
       )}
 
-      <div
-        ref={box}
-        className="relative mt-1 bg-[radial-gradient(circle,var(--border)_1px,transparent_1.2px)] bg-size-[20px_20px]"
-        style={{ height }}
-        onClick={() => setFocus(null)}
-      >
-        {width > 0 && (
-          <svg
-            width={width}
-            height={height}
-            className="absolute inset-0 block select-none"
-            role="group"
-            aria-label="People and their connections"
+      <div ref={box} className="relative mt-1 border-t border-border/50" style={{ height: viewH }}>
+        <div
+          ref={scroller}
+          className={cn(
+            "absolute inset-0 overflow-auto overscroll-x-contain [scrollbar-width:thin]",
+            dragging ? "cursor-grabbing" : "cursor-grab",
+          )}
+          {...handlers}
+          onClick={() => setFocus(null)}
+        >
+          <div
+            className="relative bg-[radial-gradient(circle,var(--border)_1px,transparent_1.2px)]"
+            style={{
+              width: Math.max(viewW, width * z),
+              height: Math.max(viewH, height * z),
+              backgroundSize: `${20 * z}px ${20 * z}px`,
+            }}
           >
-            <defs>
-              <filter id="web-node-shadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#1c1b1f" floodOpacity="0.12" />
-              </filter>
-            </defs>
+            {viewW > 0 && (
+              <svg
+                width={width * z}
+                height={height * z}
+                viewBox={`0 0 ${width} ${height}`}
+                className="absolute block select-none"
+                style={{ left: offset.x, top: offset.y }}
+                role="group"
+                aria-label="People and their connections"
+              >
+                <defs>
+                  <filter id="web-node-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#1c1b1f" floodOpacity="0.12" />
+                  </filter>
+                </defs>
 
-            {/* Group halos: one translucent layer each, so the fill and the wide stroke don't double up. */}
-            {haloLayers.map(({ g, blob, path, r, hex, lit }) => (
-              <g key={g.id} className="transition-opacity duration-300" style={{ opacity: lit ? 1 : 0.3 }}>
-                <g opacity={0.1}>
-                  {path ? (
-                    <path
-                      d={path}
-                      fill={hex}
-                      stroke={hex}
-                      strokeWidth={2 * r}
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                  ) : (
-                    <circle cx={blob[0].x} cy={blob[0].y} r={r} fill={hex} />
-                  )}
-                </g>
-              </g>
-            ))}
-            {/* Connections */}
-            {links.map((l) => {
-              const p = pos(l.person_a);
-              const q = pos(l.person_b);
-              if (!p || !q) return null;
-              const lit = linkLit(l);
-              const tone = TONES[l.tone];
-              return (
-                <g key={l.id} className="transition-opacity duration-300" style={{ opacity: lit ? 1 : 0.12 }}>
-                  {l.tone !== 0 && (
-                    <line
-                      x1={p.x}
-                      y1={p.y}
-                      x2={q.x}
-                      y2={q.y}
-                      stroke={tone.color}
-                      strokeOpacity={0.18}
-                      strokeWidth={8}
-                      strokeLinecap="round"
-                    />
-                  )}
-                  <line
-                    x1={p.x}
-                    y1={p.y}
-                    x2={q.x}
-                    y2={q.y}
-                    stroke={tone.color}
-                    strokeWidth={l.tone === 0 ? 1.75 : 2.5}
-                    strokeDasharray={l.tone === 0 ? "4 5" : undefined}
-                    strokeLinecap="round"
-                  />
-                  {/* Wide invisible hit area: tap a line to see what it is. */}
-                  <line
-                    x1={p.x}
-                    y1={p.y}
-                    x2={q.x}
-                    y2={q.y}
-                    stroke="transparent"
-                    strokeWidth={18}
-                    className="cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFocus({ kind: "link", id: l.id });
-                    }}
+                {/* Group halos: one translucent layer each, so the fill and the wide stroke don't double up. */}
+                {haloLayers.map(({ g, blob, path, r, hex, lit }) => (
+                  <g
+                    key={g.id}
+                    className="transition-opacity duration-300"
+                    style={{ opacity: lit ? 1 : 0.3 }}
                   >
-                    <title>
-                      {model.nameOf(l.person_a)} – {model.nameOf(l.person_b)}: {l.label || tone.label}
-                    </title>
-                  </line>
-                </g>
-              );
-            })}
-
-            {/* People */}
-            {people.map((person) => {
-              const p = pos(person.id);
-              if (!p) return null;
-              const hex = model.colorOf(person.id);
-              const selected = focusPerson === person.id;
-              const lit = isLit(person.id);
-              const vibe = person.vibe;
-              const pulse = vibe !== null ? nodeR + 8 : nodeR + 4;
-              const vibeR = nodeR + 4.5;
-              return (
-                <g
-                  key={person.id}
-                  transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={selected ? `Open ${person.name}` : `Focus ${person.name}`}
-                  className="cursor-pointer outline-none [&:focus-visible_.ring]:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    tap(person.id);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      tap(person.id);
-                    } else if (e.key === "Escape") setFocus(null);
-                  }}
-                >
-                  <g className="web-pop">
-                    <g
-                      className="transition-opacity duration-300"
-                      style={{ opacity: lit ? (person.hidden ? 0.6 : 1) : 0.25 }}
-                    >
-                      <circle
-                        className="ring opacity-0 transition-opacity"
-                        r={nodeR + 5}
-                        fill="none"
-                        stroke="#1c1b1f"
-                        strokeOpacity={0.35}
-                        strokeWidth={1.5}
-                      />
-                      {selected && (
-                        <circle
-                          r={nodeR + 6}
-                          fill="none"
-                          stroke={hex ?? "#1c1b1f"}
-                          strokeOpacity={0.45}
-                          strokeWidth={2}
-                        >
-                          <animate
-                            attributeName="r"
-                            values={`${pulse};${pulse + 4};${pulse}`}
-                            dur="2.4s"
-                            repeatCount="indefinite"
-                          />
-                        </circle>
+                    <g opacity={0.1}>
+                      {path ? (
+                        <path
+                          d={path}
+                          fill={hex}
+                          stroke={hex}
+                          strokeWidth={2 * r}
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                        />
+                      ) : (
+                        <circle cx={blob[0].x} cy={blob[0].y} r={r} fill={hex} />
                       )}
-                      {/* Your energy with them: a ring in its colour (energizing glows). */}
-                      {vibe !== null && (
-                        <>
-                          {vibe === 1 && (
-                            <circle
-                              r={vibeR}
-                              fill="none"
-                              stroke={TONES[1].color}
-                              strokeOpacity={0.2}
-                              strokeWidth={7}
-                            />
-                          )}
-                          <circle
-                            r={vibeR}
-                            fill="none"
-                            stroke={TONES[vibe].color}
-                            strokeWidth={vibe === 0 ? 1.5 : 2.25}
-                            strokeDasharray={vibe === 0 ? "3 3" : undefined}
-                          >
-                            <title>Your energy: {VIBE_LABELS[vibe]}</title>
-                          </circle>
-                        </>
-                      )}
-                      <circle
-                        r={nodeR}
-                        fill={hex ? tint(hex, 0.13) : "#ffffff"}
-                        stroke={hex ? tint(hex, 0.55) : "#d6d4ce"}
-                        strokeWidth={selected ? 2 : 1.25}
-                        strokeDasharray={person.hidden ? "3 3" : undefined}
-                        filter="url(#web-node-shadow)"
-                      />
-                      <text
-                        dy="0.36em"
-                        textAnchor="middle"
-                        fill={hex ?? "#3a393e"}
-                        className="pointer-events-none font-semibold tracking-tight"
-                        style={{ fontSize: d.initialsFont }}
-                      >
-                        {initials(person.name)}
-                      </text>
-                      <text
-                        y={nameY}
-                        textAnchor="middle"
-                        className="pointer-events-none fill-foreground font-medium"
-                        style={{
-                          fontSize: d.nameFont,
-                          paintOrder: "stroke",
-                          stroke: "#ffffff",
-                          strokeWidth: 3.5,
-                          strokeLinejoin: "round",
-                        }}
-                      >
-                        {shortName(person.name, d.nameMax)}
-                      </text>
                     </g>
                   </g>
-                </g>
-              );
-            })}
-            {/* Group names last, so no line or disc covers them (placed where it's least crowded). */}
-            {labels.map(({ g, spot, hex, lit, size }) => (
-              <text
-                key={g.id}
-                x={spot.x}
-                y={spot.y}
-                textAnchor={spot.anchor}
-                fill={hex}
-                style={{ opacity: lit ? 0.9 : 0.3, fontSize: size }}
-                className="pointer-events-none font-semibold uppercase tracking-[0.12em] transition-opacity duration-300"
-                paintOrder="stroke"
-                stroke="#ffffff"
-                strokeOpacity={0.85}
-                strokeWidth={3}
-                strokeLinejoin="round"
-              >
-                {g.name}
-              </text>
-            ))}
-          </svg>
-        )}
+                ))}
+                {/* Connections */}
+                {links.map((l) => {
+                  const p = pos(l.person_a);
+                  const q = pos(l.person_b);
+                  if (!p || !q) return null;
+                  const lit = linkLit(l);
+                  const tone = TONES[l.tone];
+                  return (
+                    <g
+                      key={l.id}
+                      className="transition-opacity duration-300"
+                      style={{ opacity: lit ? 1 : 0.12 }}
+                    >
+                      {l.tone !== 0 && (
+                        <line
+                          x1={p.x}
+                          y1={p.y}
+                          x2={q.x}
+                          y2={q.y}
+                          stroke={tone.color}
+                          strokeOpacity={0.18}
+                          strokeWidth={8}
+                          strokeLinecap="round"
+                        />
+                      )}
+                      <line
+                        x1={p.x}
+                        y1={p.y}
+                        x2={q.x}
+                        y2={q.y}
+                        stroke={tone.color}
+                        strokeWidth={l.tone === 0 ? 1.75 : 2.5}
+                        strokeDasharray={l.tone === 0 ? "4 5" : undefined}
+                        strokeLinecap="round"
+                      />
+                      {/* Wide invisible hit area: tap a line to see what it is. */}
+                      <line
+                        x1={p.x}
+                        y1={p.y}
+                        x2={q.x}
+                        y2={q.y}
+                        stroke="transparent"
+                        strokeWidth={18}
+                        className="cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFocus({ kind: "link", id: l.id });
+                        }}
+                      >
+                        <title>
+                          {model.nameOf(l.person_a)} – {model.nameOf(l.person_b)}: {l.label || tone.label}
+                        </title>
+                      </line>
+                    </g>
+                  );
+                })}
 
-        {/* Names of the lit connections */}
-        {pills.map(({ key, tone, label, x, y }) => (
-          <div
-            key={key}
-            className="pointer-events-none absolute z-10 flex max-w-40 -translate-x-1/2 -translate-y-1/2 justify-center"
-            style={{ left: x, top: y }}
-          >
-            <TonePill tone={tone} label={label} className="bg-card/95 shadow-sm backdrop-blur-sm" />
+                {/* People */}
+                {people.map((person) => {
+                  const p = pos(person.id);
+                  if (!p) return null;
+                  const hex = model.colorOf(person.id);
+                  const selected = focusPerson === person.id;
+                  const lit = isLit(person.id);
+                  const vibe = person.vibe;
+                  const pulse = vibe !== null ? nodeR + 8 : nodeR + 4;
+                  const vibeR = nodeR + 4.5;
+                  return (
+                    <g
+                      key={person.id}
+                      transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={selected ? `Open ${person.name}` : `Focus ${person.name}`}
+                      className="cursor-pointer outline-none [&:focus-visible_.ring]:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        tap(person.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          tap(person.id);
+                        } else if (e.key === "Escape") setFocus(null);
+                      }}
+                    >
+                      <g className="web-pop">
+                        <g
+                          className="transition-opacity duration-300"
+                          style={{
+                            opacity: lit ? (person.hidden ? 0.6 : 1) : 0.25,
+                          }}
+                        >
+                          <circle
+                            className="ring opacity-0 transition-opacity"
+                            r={nodeR + 5}
+                            fill="none"
+                            stroke="#1c1b1f"
+                            strokeOpacity={0.35}
+                            strokeWidth={1.5}
+                          />
+                          {selected && (
+                            <circle
+                              r={nodeR + 6}
+                              fill="none"
+                              stroke={hex ?? "#1c1b1f"}
+                              strokeOpacity={0.45}
+                              strokeWidth={2}
+                            >
+                              <animate
+                                attributeName="r"
+                                values={`${pulse};${pulse + 4};${pulse}`}
+                                dur="2.4s"
+                                repeatCount="indefinite"
+                              />
+                            </circle>
+                          )}
+                          {/* Your energy with them: a ring in its colour (energizing glows). */}
+                          {vibe !== null && (
+                            <>
+                              {vibe === 1 && (
+                                <circle
+                                  r={vibeR}
+                                  fill="none"
+                                  stroke={TONES[1].color}
+                                  strokeOpacity={0.2}
+                                  strokeWidth={7}
+                                />
+                              )}
+                              <circle
+                                r={vibeR}
+                                fill="none"
+                                stroke={TONES[vibe].color}
+                                strokeWidth={vibe === 0 ? 1.5 : 2.25}
+                                strokeDasharray={vibe === 0 ? "3 3" : undefined}
+                              >
+                                <title>Your energy: {VIBE_LABELS[vibe]}</title>
+                              </circle>
+                            </>
+                          )}
+                          <circle
+                            r={nodeR}
+                            fill={hex ? tint(hex, 0.13) : "#ffffff"}
+                            stroke={hex ? tint(hex, 0.55) : "#d6d4ce"}
+                            strokeWidth={selected ? 2 : 1.25}
+                            strokeDasharray={person.hidden ? "3 3" : undefined}
+                            filter="url(#web-node-shadow)"
+                          />
+                          <text
+                            dy="0.36em"
+                            textAnchor="middle"
+                            fill={hex ?? "#3a393e"}
+                            className="pointer-events-none font-semibold tracking-tight"
+                            style={{ fontSize: d.initialsFont }}
+                          >
+                            {initials(person.name)}
+                          </text>
+                          <text
+                            y={nameY}
+                            textAnchor="middle"
+                            className="pointer-events-none fill-foreground font-medium"
+                            style={{
+                              fontSize: d.nameFont,
+                              paintOrder: "stroke",
+                              stroke: "#ffffff",
+                              strokeWidth: 3.5,
+                              strokeLinejoin: "round",
+                            }}
+                          >
+                            {shortName(person.name, d.nameMax)}
+                          </text>
+                        </g>
+                      </g>
+                    </g>
+                  );
+                })}
+                {/* Group names last, so no line or disc covers them (placed where it's least crowded). */}
+                {labels.map(({ g, spot, hex, lit, size }) => (
+                  <text
+                    key={g.id}
+                    x={spot.x}
+                    y={spot.y}
+                    textAnchor={spot.anchor}
+                    fill={hex}
+                    style={{ opacity: lit ? 0.9 : 0.3, fontSize: size }}
+                    className="pointer-events-none font-semibold uppercase tracking-[0.12em] transition-opacity duration-300"
+                    paintOrder="stroke"
+                    stroke="#ffffff"
+                    strokeOpacity={0.85}
+                    strokeWidth={3}
+                    strokeLinejoin="round"
+                  >
+                    {g.name}
+                  </text>
+                ))}
+              </svg>
+            )}
+
+            {/* Names of the lit connections */}
+            {pills.map(({ key, tone, label, x, y }) => (
+              <div
+                key={key}
+                className="pointer-events-none absolute z-10 flex max-w-40 -translate-x-1/2 -translate-y-1/2 justify-center"
+                style={{
+                  left: offset.x + x * z,
+                  top: offset.y + y * z,
+                }}
+              >
+                <TonePill tone={tone} label={label} className="bg-card/95 shadow-sm backdrop-blur-sm" />
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        <MapControls onIn={zoomIn} onOut={zoomOut} onAll={showAll} canIn={canZoomIn} canOut={canZoomOut} />
       </div>
 
       {/* Focus bar */}
       <div className="flex min-h-14 items-center gap-3 border-t border-border/70 bg-muted/30 px-4 py-2.5">
         {focusPerson !== null ? (
           <>
-            <PersonAvatar name={focusName} color={model.colorOf(focusPerson)} size={32} vibe={focused?.vibe} />
+            <PersonAvatar
+              name={focusName}
+              color={model.colorOf(focusPerson)}
+              size={32}
+              vibe={focused?.vibe}
+            />
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-medium">{focusName}</span>
               <span className="truncate text-xs text-muted-foreground">
@@ -623,9 +711,18 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
                 {model.nameOf(focusLink.person_a)} <span className="text-muted-foreground">&</span>{" "}
                 {model.nameOf(focusLink.person_b)}
               </span>
-              <TonePill tone={focusLink.tone as LinkTone} label={focusLink.label} className="max-w-full self-start" />
+              <TonePill
+                tone={focusLink.tone as LinkTone}
+                label={focusLink.label}
+                className="max-w-full self-start"
+              />
             </div>
-            <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={() => onOpen(focusLink.person_a)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0"
+              onClick={() => onOpen(focusLink.person_a)}
+            >
               Edit
             </Button>
             <Button
@@ -642,7 +739,7 @@ export function PeopleWeb({ model, onOpen }: { model: PeopleModel; onOpen: (id: 
           <p className={cn("text-xs text-muted-foreground")}>
             {model.links.length === 0 && model.groups.length === 0
               ? "Open someone to connect them with others or put them in a group — your web grows here."
-              : "Tap a person to light up their connections · tap again to open them."}
+              : "Drag to move around, pinch or +/− to zoom · tap a person to light up their connections, again to open them."}
           </p>
         )}
       </div>
@@ -721,6 +818,58 @@ function WebFilter({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+const MAP_BUTTON =
+  "flex size-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-35 [&_svg]:size-4";
+
+/** Zoom in / out and "show everyone", map-style in the corner of the web. */
+function MapControls({
+  onIn,
+  onOut,
+  onAll,
+  canIn,
+  canOut,
+}: {
+  onIn: () => void;
+  onOut: () => void;
+  onAll: () => void;
+  canIn: boolean;
+  canOut: boolean;
+}) {
+  return (
+    <div className="absolute right-3 bottom-3 z-20 flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm">
+      <button
+        type="button"
+        className={MAP_BUTTON}
+        onClick={onIn}
+        disabled={!canIn}
+        aria-label="Zoom in"
+        title="Zoom in"
+      >
+        <Plus />
+      </button>
+      <button
+        type="button"
+        className={MAP_BUTTON}
+        onClick={onOut}
+        disabled={!canOut}
+        aria-label="Zoom out"
+        title="Zoom out"
+      >
+        <Minus />
+      </button>
+      <button
+        type="button"
+        className={MAP_BUTTON}
+        onClick={onAll}
+        aria-label="Show everyone"
+        title="Show everyone"
+      >
+        <Scan />
+      </button>
     </div>
   );
 }
